@@ -1,16 +1,16 @@
 [
   {
-    "host": "lavalink.frix.xyz",
+    "host": "lavalink.devamop.in",
     "port": 443,
-    "password": "youshallnotpass",
+    "password": "DevamopLavalink",
     "secure": true,
-    "name": "Frix"
+    "name": "Devamop"
   },
   {
-    "host": "lava-v4.yupra.my.id",
-    "port": 443,
+    "host": "lava.link",
+    "port": 80,
     "password": "youshallnotpass",
-    "secure": true,
-    "name": "Yupra"
+    "secure": false,
+    "name": "Lavalink-Official"
   }
 ]
