@@ -1,16 +1,16 @@
 [
   {
+    "host": "lava-v4.ajiehospitality.com",
+    "port": 443,
+    "password": "https://discord.gg/ajiehospitality",
+    "secure": true,
+    "name": "AjieHospitality"
+  },
+  {
     "host": "lavalink.lavalink.is",
     "port": 443,
     "password": "password",
     "secure": true,
     "name": "Lavalink.is"
-  },
-  {
-    "host": "lavalink.jirayu.net",
-    "port": 443,
-    "password": "youshallnotpass",
-    "secure": true,
-    "name": "Jirayu"
   }
 ]
