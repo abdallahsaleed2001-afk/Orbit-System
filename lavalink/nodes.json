@@ -1,10 +1,10 @@
 [
   {
-    "host": "lavalinkv4.serenetia.com",
+    "host": "lavalink.lavalink.is",
     "port": 443,
-    "password": "https://seretia.link/discord",
+    "password": "password",
     "secure": true,
-    "name": "Serenetia"
+    "name": "Lavalink.is"
   },
   {
     "host": "lavalink.jirayu.net",
@@ -12,19 +12,5 @@
     "password": "youshallnotpass",
     "secure": true,
     "name": "Jirayu"
-  },
-  {
-    "host": "lava-v4.millohost.my.id",
-    "port": 443,
-    "password": "https://discord.gg/mjS5J2K3ep",
-    "secure": true,
-    "name": "MilloHost"
-  },
-  {
-    "host": "lavalink-v4.triniumhost.com",
-    "port": 443,
-    "password": "free",
-    "secure": true,
-    "name": "TriniumHost"
   }
 ]
