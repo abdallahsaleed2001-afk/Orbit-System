@@ -1,16 +1,9 @@
 [
   {
-    "host": "lava-v4.yupra.my.id",
+    "host": "lavalink.lavalink.is",
     "port": 443,
-    "password": "youshallnotpass",
+    "password": "password",
     "secure": true,
-    "name": "Yupra"
-  },
-  {
-    "host": "lavalink.jirayu.net",
-    "port": 443,
-    "password": "youshallnotpass",
-    "secure": true,
-    "name": "Jirayu"
+    "name": "Public-Node"
   }
 ]
