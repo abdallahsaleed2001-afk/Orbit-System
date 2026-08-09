@@ -1,8 +1,23 @@
-js
-import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+import {
+    SlashCommandBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
+} from 'discord.js';
+
+import {
+    createEmbed,
+    successEmbed,
+    infoEmbed,
+    warningEmbed
+} from '../../utils/embeds.js';
+
 import { logger } from '../../utils/logger.js';
-import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
+import {
+    replyUserError,
+    ErrorTypes
+} from '../../utils/errorHandler.js';
+
 import { getColor } from '../../config/bot.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 
@@ -10,22 +25,34 @@ export default {
     data: new SlashCommandBuilder()
         .setName('randomuser')
         .setDescription('Select a random user from the server')
+
         .addRoleOption(option =>
-            option.setName('role')
+            option
+                .setName('role')
                 .setDescription('Limit selection to users with this role')
-                .setRequired(false))
+                .setRequired(false)
+        )
+
         .addBooleanOption(option =>
-            option.setName('bots')
+            option
+                .setName('bots')
                 .setDescription('Include bots in the selection (default: false)')
-                .setRequired(false))
+                .setRequired(false)
+        )
+
         .addBooleanOption(option =>
-            option.setName('online')
+            option
+                .setName('online')
                 .setDescription('Only select from online users (default: false)')
-                .setRequired(false))
+                .setRequired(false)
+        )
+
         .addBooleanOption(option =>
-            option.setName('mention')
+            option
+                .setName('mention')
                 .setDescription('Mention the selected user (default: false)')
-                .setRequired(false)),
+                .setRequired(false)
+        ),
 
     async execute(interaction) {
         const deferSuccess = await InteractionHelper.safeDefer(interaction);
@@ -47,58 +74,79 @@ export default {
         }
 
         const role = interaction.options.getRole('role');
-        const includeBots = interaction.options.getBoolean('bots') || false;
-        const onlineOnly = interaction.options.getBoolean('online') || false;
-        const shouldMention = interaction.options.getBoolean('mention') || false;
+        const includeBots =
+            interaction.options.getBoolean('bots') || false;
+        const onlineOnly =
+            interaction.options.getBoolean('online') || false;
+        const shouldMention =
+            interaction.options.getBoolean('mention') || false;
 
-        // Get up to 1000 members without using Gateway Opcode 8
-        let members;
+        /*
+         * Use the cached members.
+         * Do NOT call guild.members.fetch() here because that sends
+         * Gateway Opcode 8 and can trigger Discord rate limits.
+         */
 
-        try {
-            members = await interaction.guild.members.list({ limit: 1000 });
-        } catch (error) {
-            logger.error('Failed to list guild members:', error);
+        let memberArray = Array.from(
+            interaction.guild.members.cache.values()
+        ).filter(member => {
+            if (member.user.bot && !includeBots) {
+                return false;
+            }
 
-            return replyUserError(interaction, {
-                type: ErrorTypes.SYSTEM,
-                message: 'Unable to get the server members right now. Please try again later.',
-            });
-        }
+            if (
+                onlineOnly &&
+                (!member.presence ||
+                    member.presence.status === 'offline')
+            ) {
+                return false;
+            }
 
-        let memberArray = Array.from(members.values()).filter(member => {
-            if (member.user.bot && !includeBots) return false;
-
-            if (onlineOnly && member.presence?.status === 'offline') return false;
-
-            if (role && !member.roles.cache.has(role.id)) return false;
+            if (role && !member.roles.cache.has(role.id)) {
+                return false;
+            }
 
             return true;
         });
 
+        if (!includeBots) {
+            memberArray = memberArray.filter(
+                member => !member.user.bot
+            );
+        }
+
         if (memberArray.length === 0) {
-            let errorMessage = 'Could not find any users matching your filters:';
+            let errorMessage =
+                'Could not find any users matching your filters:';
 
             if (role) {
-                errorMessage = `No users have the **${role.name}** role.`;
+                errorMessage =
+                    `No users have the **${role.name}** role.`;
             }
 
             if (onlineOnly) {
-                errorMessage = 'No users are currently online.';
+                errorMessage =
+                    'No users are currently online.';
             }
 
             if (role && onlineOnly) {
-                errorMessage = `No **${role.name}** members are online.`;
+                errorMessage =
+                    `No **${role.name}** members are online.`;
             }
 
             return replyUserError(interaction, {
                 type: ErrorTypes.USER_INPUT,
-                message: errorMessage + '\n\nTry adjusting your filters.',
+                message:
+                    errorMessage +
+                    '\n\nTry adjusting your filters.',
             });
         }
 
-        const randomIndex = Math.floor(Math.random() * memberArray.length);
-        const selectedMember = memberArray[randomIndex];
+        const randomIndex = Math.floor(
+            Math.random() * memberArray.length
+        );
 
+        const selectedMember = memberArray[randomIndex];
         const user = selectedMember.user;
 
         const roles = selectedMember.roles.cache
@@ -109,9 +157,16 @@ export default {
 
         const embed = successEmbed(
             '🎲 Random User Selected',
-            shouldMention ? `${selectedMember}` : `**${user.username}**`
+            shouldMention
+                ? `${selectedMember}`
+                : `**${user.username}**`
         )
-            .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 256 }))
+            .setThumbnail(
+                user.displayAvatarURL({
+                    dynamic: true,
+                    size: 256
+                })
+            )
             .addFields(
                 {
                     name: 'Username',
@@ -125,97 +180,133 @@ export default {
                 },
                 {
                     name: `Roles (${roles.length})`,
-                    value: roles.length > 0
-                        ? roles.slice(0, 5).join('') + (roles.length > 5 ? `+${roles.length - 5} more` : '')
-                        : 'No roles',
+                    value:
+                        roles.length > 0
+                            ? roles.slice(0, 5).join('') +
+                              (roles.length > 5
+                                  ? `+${roles.length - 5} more`
+                                  : '')
+                            : 'No roles',
                     inline: false
                 }
             )
             .setColor('#FF0000');
 
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`randomuser_${interaction.user.id}_again`)
-                    .setLabel('🎲 Pick Another User')
-                    .setStyle(ButtonStyle.Primary)
-            );
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(
+                    `randomuser_${interaction.user.id}_again`
+                )
+                .setLabel('🎲 Pick Another User')
+                .setStyle(ButtonStyle.Primary)
+        );
 
         const response = await interaction.editReply({
-            content: shouldMention ? `${selectedMember}, you've been chosen!` : null,
+            content: shouldMention
+                ? `${selectedMember}, you've been chosen!`
+                : null,
+
             embeds: [embed],
+
             components: [row],
+
             allowedMentions: {
                 users: shouldMention ? [user.id] : []
             }
         });
 
-        const filter = (i) =>
-            i.customId === `randomuser_${interaction.user.id}_again` &&
+        const filter = i =>
+            i.customId ===
+                `randomuser_${interaction.user.id}_again` &&
             i.user.id === interaction.user.id;
 
-        const collector = response.createMessageComponentCollector({
-            filter,
-            time: 300000
-        });
+        const collector =
+            response.createMessageComponentCollector({
+                filter,
+                time: 300000
+            });
 
-        collector.on('collect', async (i) => {
+        collector.on('collect', async i => {
             try {
-                // Get members without using Gateway Opcode 8
-                let newMembers;
+                /*
+                 * Use the current cache again.
+                 * No members.fetch() and no members.list().
+                 */
 
-                try {
-                    newMembers = await interaction.guild.members.list({
-                        limit: 1000
-                    });
-                } catch (error) {
-                    logger.error('Failed to list guild members again:', error);
+                let newMemberArray = Array.from(
+                    interaction.guild.members.cache.values()
+                ).filter(member => {
+                    if (member.user.bot && !includeBots) {
+                        return false;
+                    }
 
-                    await i.reply({
-                        content: 'Unable to get the server members right now. Please try again later.',
-                        flags: ['Ephemeral']
-                    });
+                    if (
+                        onlineOnly &&
+                        (!member.presence ||
+                            member.presence.status === 'offline')
+                    ) {
+                        return false;
+                    }
 
-                    return;
-                }
-
-                let newMemberArray = Array.from(newMembers.values()).filter(member => {
-                    if (member.user.bot && !includeBots) return false;
-
-                    if (onlineOnly && member.presence?.status === 'offline') return false;
-
-                    if (role && !member.roles.cache.has(role.id)) return false;
+                    if (
+                        role &&
+                        !member.roles.cache.has(role.id)
+                    ) {
+                        return false;
+                    }
 
                     return true;
                 });
 
+                if (!includeBots) {
+                    newMemberArray = newMemberArray.filter(
+                        member => !member.user.bot
+                    );
+                }
+
                 if (newMemberArray.length === 0) {
                     await replyUserError(i, {
                         type: ErrorTypes.USER_INPUT,
-                        message: 'No users found matching the criteria.',
+                        message:
+                            'No users found matching the criteria.',
                     });
 
                     return;
                 }
 
-                // Avoid selecting the exact same user when possible
-                if (newMemberArray.length > 1) {
-                    const filteredDifferentUsers = newMemberArray.filter(
-                        member => member.id !== selectedMember.id
-                    );
+                /*
+                 * Avoid selecting the same user when another
+                 * eligible member exists.
+                 */
 
-                    if (filteredDifferentUsers.length > 0) {
-                        newMemberArray = filteredDifferentUsers;
+                if (newMemberArray.length > 1) {
+                    const differentUsers =
+                        newMemberArray.filter(
+                            member =>
+                                member.id !== selectedMember.id
+                        );
+
+                    if (differentUsers.length > 0) {
+                        newMemberArray = differentUsers;
                     }
                 }
 
-                const newRandomIndex = Math.floor(Math.random() * newMemberArray.length);
-                const newSelectedMember = newMemberArray[newRandomIndex];
+                const newRandomIndex = Math.floor(
+                    Math.random() * newMemberArray.length
+                );
+
+                const newSelectedMember =
+                    newMemberArray[newRandomIndex];
+
                 const newUser = newSelectedMember.user;
 
                 const newRoles = newSelectedMember.roles.cache
-                    .filter(r => r.id !== interaction.guild.id)
-                    .sort((a, b) => b.position - a.position)
+                    .filter(
+                        r => r.id !== interaction.guild.id
+                    )
+                    .sort(
+                        (a, b) => b.position - a.position
+                    )
                     .map(r => r.toString())
                     .slice(0, 10);
 
@@ -225,10 +316,12 @@ export default {
                         ? `${newSelectedMember}`
                         : `**${newUser.username}**`
                 )
-                    .setThumbnail(newUser.displayAvatarURL({
-                        dynamic: true,
-                        size: 256
-                    }))
+                    .setThumbnail(
+                        newUser.displayAvatarURL({
+                            dynamic: true,
+                            size: 256
+                        })
+                    )
                     .addFields(
                         {
                             name: 'Username',
@@ -242,12 +335,15 @@ export default {
                         },
                         {
                             name: `Roles (${newRoles.length})`,
-                            value: newRoles.length > 0
-                                ? newRoles.slice(0, 5).join('') +
-                                  (newRoles.length > 5
-                                      ? `+${newRoles.length - 5} more`
-                                      : '')
-                                : 'No roles',
+                            value:
+                                newRoles.length > 0
+                                    ? newRoles
+                                          .slice(0, 5)
+                                          .join('') +
+                                      (newRoles.length > 5
+                                          ? `+${newRoles.length - 5} more`
+                                          : '')
+                                    : 'No roles',
                             inline: false
                         }
                     )
@@ -257,19 +353,27 @@ export default {
                     content: shouldMention
                         ? `${newSelectedMember}, you've been chosen!`
                         : null,
+
                     embeds: [newEmbed],
+
                     components: [row],
+
                     allowedMentions: {
-                        users: shouldMention ? [newUser.id] : []
+                        users: shouldMention
+                            ? [newUser.id]
+                            : []
                     }
                 });
-
             } catch (error) {
-                logger.error('Button interaction error:', error);
+                logger.error(
+                    'Button interaction error:',
+                    error
+                );
 
                 if (!i.replied && !i.deferred) {
                     await i.reply({
-                        content: 'An error occurred while selecting another user.',
+                        content:
+                            'An error occurred while selecting another user.',
                         flags: ['Ephemeral']
                     });
                 }
@@ -277,14 +381,18 @@ export default {
         });
 
         collector.on('end', () => {
-            const disabledRow = ActionRowBuilder.from(row).setComponents(
-                ButtonBuilder.from(row.components[0]).setDisabled(true)
-            );
+            const disabledRow =
+                ActionRowBuilder.from(row).setComponents(
+                    ButtonBuilder.from(
+                        row.components[0]
+                    ).setDisabled(true)
+                );
 
-            interaction.editReply({
-                components: [disabledRow]
-            }).catch(console.error);
+            interaction
+                .editReply({
+                    components: [disabledRow]
+                })
+                .catch(console.error);
         });
     },
 };
-
