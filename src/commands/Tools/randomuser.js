@@ -49,8 +49,14 @@ export default {
         const onlineOnly = interaction.options.getBoolean('online') || false;
         const shouldMention = interaction.options.getBoolean('mention') || false;
 
-        // Fetch all server members before selecting
-        await interaction.guild.members.fetch();
+        // Fetch members only once when the command starts
+        if (interaction.guild.members.cache.size <= 1) {
+            try {
+                await interaction.guild.members.fetch();
+            } catch (error) {
+                logger.error('Failed to fetch guild members:', error);
+            }
+        }
 
         let members = interaction.guild.members.cache.filter(member => {
             if (member.user.bot && !includeBots) return false;
@@ -123,9 +129,6 @@ export default {
 
         collector.on('collect', async (i) => {
             try {
-                // Fetch all server members before selecting again
-                await interaction.guild.members.fetch();
-
                 let newMembers = interaction.guild.members.cache.filter(member => {
                     if (member.user.bot && !includeBots) return false;
 
