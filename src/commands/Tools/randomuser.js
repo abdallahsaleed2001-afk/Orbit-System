@@ -1,4 +1,4 @@
-```js
+js
 import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
 import { logger } from '../../utils/logger.js';
@@ -287,4 +287,4 @@ export default {
         });
     },
 };
-```
+
