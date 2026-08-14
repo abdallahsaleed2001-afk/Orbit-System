@@ -4,6 +4,7 @@ import { getEconomyData, getMaxBankCapacity } from '../../utils/economy.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { getPortfolio } from '../../services/marketService.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -50,6 +51,7 @@ export default {
         }
 
         const maxBank = getMaxBankCapacity(userData);
+        const portfolio = await getPortfolio(client, guildId, targetUser.id);
 
         const wallet = typeof userData.wallet === 'number' ? userData.wallet : 0;
         const bank = typeof userData.bank === 'number' ? userData.bank : 0;
@@ -70,8 +72,18 @@ export default {
                         inline: true,
                     },
                     {
-                        name: "💰 Total",
-                        value: `$${(wallet + bank).toLocaleString()}`,
+                        name: "💧 Liquid wealth",
+                        value: `${(wallet + bank).toLocaleString()}`,
+                        inline: true,
+                    },
+                    {
+                        name: "📈 Investments",
+                        value: `${portfolio.value.toLocaleString()} (not liquid)`,
+                        inline: true,
+                    },
+                    {
+                        name: "💰 Net worth",
+                        value: `${(wallet + bank + portfolio.value).toLocaleString()}`,
                         inline: true,
                     }
                 )
