@@ -124,6 +124,38 @@ export async function depositToBank(client, guildId, userId, amount) {
     });
 }
 
+
+export async function depositAllToBank(client, guildId, userId) {
+    const ids = validateIds(guildId, userId);
+    return Mutex.runExclusive(`orbit-bank:ledger:${ids.guildId}`, async () => {
+        const config = await getBankConfig(client, ids.guildId);
+        assertBankAvailable(config, [ids.userId]);
+
+        const account = await getEconomyData(client, ids.guildId, ids.userId);
+        const capacity = getMaxBankCapacity(account);
+        const amount = Math.min(account.wallet, Math.max(0, capacity - account.bank));
+        if (amount <= 0) {
+            throw createError('Nothing to deposit', ErrorTypes.VALIDATION, 'You have no cash or available bank capacity to deposit.');
+        }
+
+        account.wallet -= amount;
+        account.bank += amount;
+        const transaction = {
+            id: randomUUID(),
+            guildId: ids.guildId,
+            type: 'BANK_DEPOSIT',
+            amount,
+            users: [ids.userId],
+            metadata: { all: true },
+            createdAt: Date.now(),
+            status: 'completed',
+        };
+
+        await setEconomyData(client, ids.guildId, ids.userId, account);
+        await recordTransaction(client, ids.guildId, transaction);
+        return { wallet: account.wallet, bank: account.bank, capacity, transaction };
+    });
+}
 export async function withdrawFromBank(client, guildId, userId, amount) {
     const ids = validateIds(guildId, userId);
     return runLedgerTransaction(client, ids.guildId, [ids.userId], 'BANK_WITHDRAWAL', amount, async (accounts, _config, value) => {
