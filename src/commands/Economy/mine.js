@@ -10,6 +10,13 @@ const BASE_MAX_REWARD = 1200;
 const PICKAXE_MULTIPLIER = 1.2;
 const DIAMOND_PICKAXE_MULTIPLIER = 2.0;
 
+const MATERIAL_REWARDS = [
+    { id: 'material_concrete', label: 'Concrete', min: 3, max: 8 },
+    { id: 'material_steel', label: 'Steel', min: 2, max: 6 },
+    { id: 'material_wood', label: 'Wood', min: 4, max: 10 },
+    { id: 'material_machinery', label: 'Machinery', min: 1, max: 2 },
+];
+
 const MINE_LOCATIONS = [
     "abandoned gold mine",
     "dark, damp cave",
@@ -67,13 +74,17 @@ export default {
                 multiplierMessage = `\n⛏️ **Pickaxe Bonus: +20%**`;
             }
 
+            const material = MATERIAL_REWARDS[Math.floor(Math.random() * MATERIAL_REWARDS.length)];
+            const materialQuantity = Math.floor(Math.random() * (material.max - material.min + 1)) + material.min;
             const location =
                 MINE_LOCATIONS[
                     Math.floor(Math.random() * MINE_LOCATIONS.length)
                 ];
 
             userData.wallet += finalEarned;
-userData.lastMine = now;
+            userData.inventory = userData.inventory || {};
+            userData.inventory[material.id] = (userData.inventory[material.id] || 0) + materialQuantity;
+            userData.lastMine = now;
 
             await setEconomyData(client, guildId, userId, userData);
 
@@ -84,6 +95,10 @@ userData.lastMine = now;
                 .addFields({
                     name: "New Cash Balance",
                     value: `$${userData.wallet.toLocaleString()}`,
+                    inline: true,
+                }, {
+                    name: "Materials Found",
+                    value: `${material.label} × ${materialQuantity}`,
                     inline: true,
                 })
                 .setFooter({ text: `Next mine available in 1 hour.` });
