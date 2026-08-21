@@ -1,56 +1,64 @@
-import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType } from 'discord.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { successEmbed } from '../../utils/embeds.js';
 import { logEvent } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
-import { getColor } from '../../config/bot.js';
-
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
+
+const TARGET_ROLE_ID = '1534935138440314960';
+
 export default {
-    data: new SlashCommandBuilder()
-    .setName("lock")
-    .setDescription(
-      "Locks the current channel (prevents @everyone from sending messages).",
-    )
-.setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-  category: "moderation",
+  data: new SlashCommandBuilder()
+    .setName('lock')
+    .setDescription('Locks the current channel for the configured role.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+  category: 'moderation',
 
   async execute(interaction, config, client) {
     const deferSuccess = await InteractionHelper.safeDefer(interaction);
-    if (!deferSuccess) {
-      logger.warn(`Lock interaction defer failed`, {
-        userId: interaction.user.id,
-        guildId: interaction.guildId,
-        commandName: 'lock'
-      });
-      return;
-    }
+    if (!deferSuccess) return;
 
     const channel = interaction.channel;
-    const everyoneRole = interaction.guild.roles.everyone;
+    const targetRole = interaction.guild.roles.cache.get(TARGET_ROLE_ID);
+
+    if (!targetRole) {
+      return await replyUserError(interaction, {
+        type: ErrorTypes.UNKNOWN,
+        message: 'The configured role could not be found in this server.'
+      });
+    }
 
     try {
-      const currentPermissions = channel.permissionsFor(everyoneRole);
-      if (currentPermissions.has(PermissionFlagsBits.SendMessages) === false) {
-        return await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: `${channel} is already locked.` });
+      const currentPermissions = channel.permissionsFor(targetRole);
+
+      if (!currentPermissions.has(PermissionFlagsBits.SendMessages)) {
+        return await replyUserError(interaction, {
+          type: ErrorTypes.UNKNOWN,
+          message: `${channel} is already locked for ${targetRole}.`
+        });
       }
 
       await channel.permissionOverwrites.edit(
-        everyoneRole,
+        targetRole,
         { SendMessages: false },
-{ type: 0, reason: `Channel locked by ${interaction.user.tag}` },
+        {
+          type: 0,
+          reason: `Channel locked for ${targetRole.name} by ${interaction.user.tag}`
+        }
       );
 
       await logEvent({
         client,
         guild: interaction.guild,
         event: {
-          action: "Channel Locked",
+          action: 'Channel Locked',
           target: channel.toString(),
           executor: `${interaction.user.tag} (${interaction.user.id})`,
           metadata: {
             channelId: channel.id,
-            category: channel.parent?.name || 'None',
+            roleId: targetRole.id,
+            roleName: targetRole.name,
             moderatorId: interaction.user.id
           }
         }
@@ -59,14 +67,19 @@ export default {
       await InteractionHelper.safeEditReply(interaction, {
         embeds: [
           successEmbed(
-            `🔒 **Channel Locked**`,
-            `${channel} is now locked down. No one can speak here now.`,
-          ),
-        ],
+            '🔒 Channel Locked',
+            `${channel} is now locked for ${targetRole}.`
+          )
+        ]
       });
+
     } catch (error) {
       logger.error('Lock command error:', error);
-      await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'An unexpected error occurred while trying to lock the channel. Check my permissions (I need \'Manage Channels\').' });
+
+      await replyUserError(interaction, {
+        type: ErrorTypes.PERMISSION,
+        message: 'I could not modify the channel permissions. Make sure I have Manage Channels.'
+      });
     }
   }
 };
