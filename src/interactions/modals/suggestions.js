@@ -8,6 +8,10 @@ export default {
 
     const data = await getSuggestions(client, interaction.guildId);
     const id = await nextSuggestionId(client, interaction.guildId);
+    data.counter = Math.max(Number(data.counter || 0), id);
+    const channel = interaction.guild.channels.cache.get(data.channelId);
+    if (!channel) return interaction.reply({ content: '❌ Suggestions channel is missing. Run `/suggestions setup` again.', ephemeral: true });
+
     const suggestion = {
       id,
       authorId: interaction.user.id,
@@ -18,9 +22,6 @@ export default {
       createdAt: new Date().toISOString(),
       messageId: null,
     };
-
-    const channel = interaction.guild.channels.cache.get(data.channelId);
-    if (!channel) return interaction.reply({ content: '❌ Suggestions channel is missing. Run `/suggestions setup` again.', ephemeral: true });
 
     const message = await channel.send({ embeds: [suggestionEmbed(suggestion)], components: suggestionButtons(suggestion) });
     suggestion.messageId = message.id;
