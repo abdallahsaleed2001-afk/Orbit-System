@@ -15,7 +15,7 @@ function status(enabled) {
   return enabled ? '🟢 **ACTIVE**' : '🔴 **OFF**';
 }
 
-function dashboard(config, guild) {
+export function buildSecurityDashboard(config, guild) {
   const systems = [config.antiNuke?.enabled, config.antiRaid?.enabled, config.autoMod?.enabled, config.enabled];
   const active = systems.filter(Boolean).length;
   const score = Math.round((active / systems.length) * 100);
@@ -38,7 +38,7 @@ function dashboard(config, guild) {
     .setTimestamp();
 }
 
-function controls(userId) {
+export function buildSecurityControls(userId) {
   return [
     new ActionRowBuilder().addComponents(
       ...BUTTONS.slice(0, 4).map(([id, label], index) => new ButtonBuilder().setCustomId(`${id}:${userId}`).setLabel(label).setStyle(index === 0 ? ButtonStyle.Danger : ButtonStyle.Primary)),
@@ -64,6 +64,6 @@ export default {
     }
 
     const security = await getSecurityConfig(client, interaction.guildId);
-    await interaction.reply({ embeds: [dashboard(security, interaction.guild)], components: controls(interaction.user.id), flags: MessageFlags.Ephemeral });
+    await interaction.reply({ embeds: [buildSecurityDashboard(security, interaction.guild)], components: buildSecurityControls(interaction.user.id), flags: MessageFlags.Ephemeral });
   },
 };
