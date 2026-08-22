@@ -1,4 +1,4 @@
-import { getJoinToCreateConfig, saveJoinToCreateConfig, getTemporaryChannelInfo, unregisterTemporaryChannel } from '../../utils/database.js';
+import { getJoinToCreateConfig, saveJoinToCreateConfig, getTemporaryChannelInfo } from '../../utils/database.js';
 
 async function roomFor(interaction, client) {
   const channel = interaction.member?.voice?.channel;
@@ -47,8 +47,9 @@ export default [
       const id = i.fields.getTextInputValue('value').trim();
       const member = await i.guild.members.fetch(id).catch(() => null);
       if (!member || member.voice.channelId !== room.channel.id) return i.reply({ content: '❌ That user is not in your room.', ephemeral: true });
-      await member.voice.setMute(!member.voice.serverMute, 'TempVoice owner toggled mute');
-      return i.reply({ content: member.voice.serverMute ? `🔇 Muted <@${member.id}>.` : `🔊 Unmuted <@${member.id}>.`, ephemeral: true });
+      const nextMuted = !member.voice.serverMute;
+      await member.voice.setMute(nextMuted, 'TempVoice owner toggled mute');
+      return i.reply({ content: nextMuted ? `🔇 Muted <@${member.id}>.` : `🔊 Unmuted <@${member.id}>.`, ephemeral: true });
     },
   },
   {
@@ -60,9 +61,13 @@ export default [
       if (!member || member.voice.channelId !== room.channel.id) return i.reply({ content: '❌ The new owner must be inside your room.', ephemeral: true });
       const config = await getJoinToCreateConfig(client, i.guildId);
       const info = config.temporaryChannels[room.channel.id];
+      const oldOwnerId = info.ownerId;
       info.ownerId = member.id;
       await saveJoinToCreateConfig(client, i.guildId, config);
       await room.channel.permissionOverwrites.edit(member.id, { Connect: true, Speak: true, MoveMembers: true, ManageChannels: true }).catch(() => {});
+      if (oldOwnerId !== member.id) {
+        await room.channel.permissionOverwrites.edit(oldOwnerId, { Connect: true, Speak: true, MoveMembers: false, ManageChannels: false }).catch(() => {});
+      }
       return i.reply({ content: `👑 Ownership transferred to <@${member.id}>.`, ephemeral: true });
     },
   },
