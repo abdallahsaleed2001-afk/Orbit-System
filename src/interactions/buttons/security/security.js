@@ -2,13 +2,14 @@ import securityDashboardOverrides from '../../../handlers/securityDashboardOverr
 import { securityDashboardButtonHandlers } from '../../../handlers/securityDashboardCore.js';
 import securityDashboardRuleHandlers from '../../../handlers/securityDashboardRuleHandlers.js';
 import securityAutoModDashboard from '../../../handlers/securityAutoModDashboard.js';
+import securityDashboardFixes from '../../../handlers/securityDashboardFixes.js';
 
-// Compatibility handlers must be registered first so legacy message buttons
-// resolve to the intended dashboard/AutoMod behavior before duplicate IDs from
-// the newer dashboard handlers are encountered.
+// Compatibility handlers first, then the core dashboard, then targeted fixes.
+// The final array order intentionally lets the fixes replace broken/legacy IDs.
 export default [
   ...securityDashboardOverrides,
   ...securityDashboardButtonHandlers,
   ...securityDashboardRuleHandlers,
   ...securityAutoModDashboard,
+  ...securityDashboardFixes,
 ];
