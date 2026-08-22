@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { initializeJoinToCreate, getConfiguration } from '../../services/joinToCreateService.js';
 import { getTempVoiceConfig, saveTempVoiceConfig } from '../../services/tempVoiceService.js';
 
 export default {
@@ -12,13 +13,15 @@ export default {
 
   async execute(interaction, config, client) {
     const guild = interaction.guild;
+    const subcommand = interaction.options.getSubcommand();
     const current = await getTempVoiceConfig(client, guild.id);
 
-    if (interaction.options.getSubcommand() === 'reset') {
+    if (subcommand === 'reset') {
+      const jtc = await getConfiguration(client, guild.id).catch(() => null);
+      for (const channelId of Object.keys(jtc?.temporaryChannels || {})) await guild.channels.delete(channelId).catch(() => {});
       if (current.triggerChannelId) await guild.channels.delete(current.triggerChannelId).catch(() => {});
       if (current.panelChannelId) await guild.channels.delete(current.panelChannelId).catch(() => {});
       if (current.categoryId) await guild.channels.delete(current.categoryId).catch(() => {});
-      for (const channelId of Object.keys(current.rooms || {})) await guild.channels.delete(channelId).catch(() => {});
       await saveTempVoiceConfig(client, guild.id, { categoryId: null, triggerChannelId: null, panelChannelId: null, panelMessageId: null, rooms: {} });
       return interaction.reply({ content: '✅ TempVoice setup has been reset.', ephemeral: true });
     }
@@ -32,6 +35,13 @@ export default {
     const category = await guild.channels.create({ name: 'Temporary Voice', type: ChannelType.GuildCategory });
     const trigger = await guild.channels.create({ name: '➕・Join to Create', type: ChannelType.GuildVoice, parent: category.id });
     const panel = await guild.channels.create({ name: 'tempvoice-panel', type: ChannelType.GuildText, parent: category.id });
+
+    await initializeJoinToCreate(client, guild.id, trigger.id, {
+      nameTemplate: "{username}'s Room",
+      userLimit: 0,
+      bitrate: 64000,
+      categoryId: category.id,
+    });
 
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
