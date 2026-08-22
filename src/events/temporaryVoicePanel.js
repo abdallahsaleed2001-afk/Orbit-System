@@ -10,28 +10,29 @@ export default {
             const guild = newState.guild || oldState.guild;
             if (!guild || !client || newState.member?.user?.bot) return;
 
-            // The main voiceStateUpdate handler creates/deletes the room. This listener
-            // only attaches/synchronizes the public control panel after those changes.
-            if (newState.channelId) {
-                const info = await getTemporaryChannelInfo(client, guild.id, newState.channelId);
-                if (info && newState.channel) {
-                    // Give the main JTC handler a moment to finish registering the room
-                    // before attempting to persist the panel message id.
-                    setTimeout(() => {
-                        updatePanel(client, newState.channel).catch((error) =>
-                            logger.debug(`Temporary voice panel sync failed: ${error.message}`)
-                        );
-                    }, 250);
-                }
+            if (newState.channelId && newState.channel) {
+                // The main JTC listener registers the temporary channel before moving
+                // the member. We intentionally re-check after a short delay so listener
+                // ordering/race conditions cannot prevent the public panel from appearing.
+                setTimeout(async () => {
+                    try {
+                        const info = await getTemporaryChannelInfo(client, guild.id, newState.channelId);
+                        if (info) await updatePanel(client, newState.channel);
+                    } catch (error) {
+                        logger.debug(`Temporary voice panel sync failed: ${error.message}`);
+                    }
+                }, 400);
             }
 
-            if (oldState.channelId && oldState.channelId !== newState.channelId) {
-                const oldInfo = await getTemporaryChannelInfo(client, guild.id, oldState.channelId);
-                if (oldInfo && oldState.channel) {
-                    setTimeout(() => {
-                        updatePanel(client, oldState.channel).catch(() => null);
-                    }, 500);
-                }
+            if (oldState.channelId && oldState.channelId !== newState.channelId && oldState.channel) {
+                setTimeout(async () => {
+                    try {
+                        const info = await getTemporaryChannelInfo(client, guild.id, oldState.channelId);
+                        if (info) await updatePanel(client, oldState.channel);
+                    } catch {
+                        // The main JTC handler may already have deleted the empty room.
+                    }
+                }, 600);
             }
         } catch (error) {
             logger.debug(`Temporary voice panel event error: ${error.message}`);
