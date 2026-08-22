@@ -5,6 +5,7 @@ const ok = interaction => interaction.customId.split(':').at(-1) === interaction
 const deny = interaction => interaction.reply({ content: 'This security dashboard belongs to another moderator.', ephemeral: true });
 const button = (id, label, style = ButtonStyle.Secondary) => new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);
 const row = (...buttons) => new ActionRowBuilder().addComponents(buttons);
+const AUTOMOD_ACTIONS = ['delete', 'timeout', 'kick', 'ban'];
 
 function embed(title, description, guild, color = 0xfee75c) {
   return new EmbedBuilder()
@@ -107,6 +108,29 @@ async function saveWhitelist(interaction, client, type) {
   return whitelistPage(interaction, client);
 }
 
+function parseAutoModKey(interaction) {
+  return interaction.customId.split(':').at(-2);
+}
+
+async function autoModPunishment(interaction, client) {
+  if (!ok(interaction)) return deny(interaction);
+  const key = parseAutoModKey(interaction);
+  const config = await getSecurityConfig(client, interaction.guildId);
+  if (!config.autoMod[key]) return interaction.reply({ content: 'AutoMod rule unavailable.', ephemeral: true });
+  const current = config.autoMod[key].punishment;
+  const index = AUTOMOD_ACTIONS.indexOf(current);
+  const next = AUTOMOD_ACTIONS[(index < 0 ? 0 : index + 1) % AUTOMOD_ACTIONS.length];
+  await updateSecurityConfig(client, interaction.guildId, { autoMod: { [key]: { punishment: next } } });
+  return interaction.update({
+    embeds: [embed(`🤖 ${key} Settings`, `**Status:** ${config.autoMod[key].enabled ? '🟢 ACTIVE' : '🔴 OFF'}\n**Punishment:** **${next}**`, interaction.guild)],
+    components: [row(
+      button(`automod_back:${interaction.user.id}`, '← AutoMod'),
+      button(`automod_toggle:${key}:${interaction.user.id}`, config.autoMod[key].enabled ? '🔴 Disable' : '🟢 Enable', config.autoMod[key].enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+      button(`automod_punishment:${key}:${interaction.user.id}`, `⚖️ ${next}`, ButtonStyle.Primary),
+    )],
+  });
+}
+
 export default [
   { name: 'security_panel_strikes2', execute: async (i, c) => ok(i) ? renderStrikes(i, c) : deny(i) },
   { name: 'security_panel_strikes', execute: async (i, c) => ok(i) ? renderStrikes(i, c) : deny(i) },
@@ -124,4 +148,5 @@ export default [
   { name: 'security_final_wl_users', execute: async (i, c) => ok(i) ? saveWhitelist(i, c, 'users') : deny(i) },
   { name: 'security_final_wl_roles', execute: async (i, c) => ok(i) ? saveWhitelist(i, c, 'roles') : deny(i) },
   { name: 'security_final_wl_bots', execute: async (i, c) => ok(i) ? saveWhitelist(i, c, 'bots') : deny(i) },
+  { name: 'automod_punishment', execute: autoModPunishment },
 ];
