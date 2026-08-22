@@ -25,9 +25,7 @@ export default [
   { name: 'partner_stats', async execute(interaction) {
     const data = await getPartnerData(interaction.client, interaction.guildId);
     const accepted = data.applications.filter(a => a.status === 'accepted').length, rejected = data.applications.filter(a => a.status === 'rejected').length, pending = data.applications.filter(a => a.status === 'pending').length;
-    return interaction.update({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('📊 إحصائيات الشراكات').addFields(
-      { name: 'الشراكات الحالية', value: String(data.partners.filter(p => p.status === 'active').length), inline: true }, { name: 'المقبولة', value: String(accepted), inline: true }, { name: 'المرفوضة', value: String(rejected), inline: true }, { name: 'المعلقة', value: String(pending), inline: true }, { name: 'إجمالي الطلبات', value: String(data.applications.length), inline: true },
-    )], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('partner_back_dashboard').setLabel('رجوع').setStyle(ButtonStyle.Secondary))] });
+    return interaction.update({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('📊 إحصائيات الشراكات').addFields({ name: 'الشراكات الحالية', value: String(data.partners.filter(p => p.status === 'active').length), inline: true }, { name: 'المقبولة', value: String(accepted), inline: true }, { name: 'المرفوضة', value: String(rejected), inline: true }, { name: 'المعلقة', value: String(pending), inline: true }, { name: 'إجمالي الطلبات', value: String(data.applications.length), inline: true })], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('partner_back_dashboard').setLabel('رجوع').setStyle(ButtonStyle.Secondary))] });
   }},
   { name: 'partner_settings', async execute(interaction) {
     const data = await getPartnerData(interaction.client, interaction.guildId);
@@ -41,9 +39,7 @@ export default [
   { name: 'partner_back_dashboard', async execute(interaction) {
     const data = await getPartnerData(interaction.client, interaction.guildId);
     const pending = data.applications.filter(a => a.status === 'pending').length, active = data.partners.filter(p => p.status === 'active').length;
-    return interaction.update({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('🤝 إدارة الشراكات').setDescription('إدارة طلبات الشراكة والشراكات الحالية من هنا.').addFields(
-      { name: 'الشراكات الحالية', value: String(active), inline: true }, { name: 'الطلبات المعلقة', value: String(pending), inline: true }, { name: 'إجمالي الطلبات', value: String(data.applications.length), inline: true },
-    )], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('partner_pending').setLabel('الطلبات').setEmoji('🟡').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('partner_active').setLabel('الشركاء').setEmoji('🤝').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('partner_stats').setLabel('الإحصائيات').setEmoji('📊').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('partner_settings').setLabel('الإعدادات').setEmoji('⚙️').setStyle(ButtonStyle.Secondary))] });
+    return interaction.update({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('🤝 إدارة الشراكات').setDescription('إدارة طلبات الشراكة والشراكات الحالية من هنا.').addFields({ name: 'الشراكات الحالية', value: String(active), inline: true }, { name: 'الطلبات المعلقة', value: String(pending), inline: true }, { name: 'إجمالي الطلبات', value: String(data.applications.length), inline: true })], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('partner_pending').setLabel('الطلبات').setEmoji('🟡').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('partner_active').setLabel('الشركاء').setEmoji('🤝').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('partner_stats').setLabel('الإحصائيات').setEmoji('📊').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('partner_settings').setLabel('الإعدادات').setEmoji('⚙️').setStyle(ButtonStyle.Secondary))] });
   }},
   { name: 'partner_accept', async execute(interaction, client, args) { return review(interaction, client, args[0], 'accepted'); } },
   { name: 'partner_reject', async execute(interaction, client, args) { return review(interaction, client, args[0], 'rejected'); } },
@@ -64,7 +60,8 @@ async function review(interaction, client, id, status) {
   if (status === 'accepted' && data.announcementChannelId) {
     const announcementChannel = interaction.guild.channels.cache.get(data.announcementChannelId);
     if (announcementChannel?.isTextBased()) {
-      await announcementChannel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('🤝 شراكة جديدة').setDescription(`يسعدنا الإعلان عن شراكتنا الجديدة مع **${app.serverName}**!\n\n🔗 ${app.invite}\n👥 ${app.members} عضو\n\nنتمنى لهم ولنا التوفيق.`)] });
+      const text = `@everyone @here\n\n🤝 **شراكة جديدة!**\n\nيسرنا الإعلان عن شراكتنا مع **${app.serverName}**!\n\n📝 **تعريف السيرفر:**\n${app.description}\n\n🔗 **رابط السيرفر:** ${app.invite}\n\nنتمنى لهم ولنا التوفيق!`;
+      await announcementChannel.send({ content: text, allowedMentions: { parse: ['everyone'] } });
     }
   }
   return interaction.followUp({ content: status === 'accepted' ? `✅ تم قبول طلب الشراكة #${app.id} ونشر الإعلان.` : `✅ تم رفض طلب الشراكة #${app.id}.`, ephemeral: true });
