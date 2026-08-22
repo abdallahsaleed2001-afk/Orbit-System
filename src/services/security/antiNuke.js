@@ -3,7 +3,6 @@ import { getSecurityConfig, isWhitelisted, sendSecurityLog, getRecentCount } fro
 import { logger } from '../../utils/logger.js';
 
 const counters = new Map();
-
 const EVENT_MAP = {
   channelDelete: AuditLogEvent.ChannelDelete,
   channelCreate: AuditLogEvent.ChannelCreate,
@@ -16,33 +15,26 @@ const EVENT_MAP = {
   kick: AuditLogEvent.MemberKick,
   botAdd: AuditLogEvent.BotAdd,
 };
-
-function key(guildId, executorId, type) {
-  return `${guildId}:${executorId}:${type}`;
-}
+function key(guildId, executorId, type) { return `${guildId}:${executorId}:${type}`; }
 
 async function findExecutor(guild, auditType, targetId = null) {
   const types = Array.isArray(auditType) ? auditType : [auditType];
   const entries = [];
-
   for (const type of types) {
     const logs = await guild.fetchAuditLogs({ type, limit: 10 }).catch(() => null);
     if (!logs?.entries) continue;
-
     for (const entry of logs.entries.values()) {
       if (Date.now() - entry.createdTimestamp > 15000) continue;
       if (targetId && entry.target?.id !== targetId && entry.targetId !== targetId) continue;
       entries.push(entry);
     }
   }
-
   entries.sort((a, b) => b.createdTimestamp - a.createdTimestamp);
   return entries[0]?.executor || null;
 }
 
 async function stripDangerousRoles(member, reason) {
   if (!member.manageable) return false;
-
   const removable = member.roles.cache.filter(role => {
     if (role.id === member.guild.id || !role.editable) return false;
     return role.permissions.any([
@@ -55,41 +47,44 @@ async function stripDangerousRoles(member, reason) {
       PermissionFlagsBits.ManageWebhooks,
     ]);
   });
-
   if (!removable.size) return false;
   await member.roles.remove(removable, `Anti-Nuke: ${reason}`).catch(() => {});
   return true;
 }
 
-async function punishExecutor(guild, executor, config, reason, targetId) {
+async function punishExecutor(guild, executor, config, type, reason, targetId) {
   const member = await guild.members.fetch(executor.id).catch(() => null);
   if (!member || member.id === guild.ownerId || isWhitelisted(member, config)) return false;
 
-  let actionTaken = config.antiNuke.action;
-
-  if (config.antiNuke.action === 'ban' && member.bannable) {
-    await member.ban({ reason: `Anti-Nuke: ${reason}` }).catch(() => {});
-  } else if (config.antiNuke.action === 'kick' && member.kickable) {
-    await member.kick(`Anti-Nuke: ${reason}`).catch(() => {});
-  } else {
+  const action = config.antiNuke.punishments?.[type] || config.antiNuke.action || 'strip';
+  let actionTaken = action;
+  if (action === 'ban' && member.bannable) await member.ban({ reason: `Anti-Nuke: ${reason}` }).catch(() => {});
+  else if (action === 'kick' && member.kickable) await member.kick(`Anti-Nuke: ${reason}`).catch(() => {});
+  else if (action === 'timeout' && member.moderatable) await member.timeout(10 * 60 * 1000, `Anti-Nuke: ${reason}`).catch(() => {});
+  else if (action === 'strip') {
     const stripped = await stripDangerousRoles(member, reason);
     actionTaken = stripped ? 'strip' : 'none';
+  } else if (action === 'warn') {
+    const channel = guild.systemChannel;
+    if (channel?.isTextBased()) {
+      const warning = await channel.send(`⚠️ <@${executor.id}> Anti-Nuke triggered: **${reason}**.`).catch(() => null);
+      if (warning) setTimeout(() => warning.delete().catch(() => {}), 5000);
+    }
   }
 
-  if (reason.startsWith('botAdd') && targetId) {
+  if (type === 'botAdd' && targetId) {
     const bot = await guild.members.fetch(targetId).catch(() => null);
-    if (bot?.user?.bot && bot.kickable && bot.id !== guild.client.user?.id) {
-      await bot.kick('Anti-Nuke: unauthorized bot addition').catch(() => {});
-    }
+    if (bot?.user?.bot && bot.kickable && bot.id !== guild.client.user?.id) await bot.kick('Anti-Nuke: unauthorized bot addition').catch(() => {});
   }
 
   await sendSecurityLog(guild.client, guild, {
     title: 'Anti-Nuke Triggered',
     description: `**${executor.tag || executor.username}** triggered Anti-Nuke protection.`,
     fields: [
+      { name: 'Operation', value: type, inline: true },
       { name: 'Reason', value: reason.slice(0, 1024), inline: true },
       { name: 'Action', value: actionTaken, inline: true },
-      { name: 'Executor', value: `${executor.id}`, inline: true },
+      { name: 'Executor', value: executor.id, inline: true },
     ],
   });
   return true;
@@ -98,7 +93,6 @@ async function punishExecutor(guild, executor, config, reason, targetId) {
 export async function handleAntiNuke(guild, type, targetId = null) {
   const config = await getSecurityConfig(guild.client, guild.id);
   if (!config.enabled || !config.antiNuke.enabled) return;
-
   const auditType = EVENT_MAP[type];
   const threshold = Number(config.antiNuke.thresholds?.[type] || 0);
   if (!auditType || threshold <= 0) return;
@@ -106,7 +100,6 @@ export async function handleAntiNuke(guild, type, targetId = null) {
   const auditTargetId = type.startsWith('webhook') ? null : targetId;
   const executor = await findExecutor(guild, auditType, auditTargetId);
   if (!executor || executor.id === guild.client.user?.id) return;
-
   const member = await guild.members.fetch(executor.id).catch(() => null);
   if (!member || member.id === guild.ownerId || isWhitelisted(member, config)) return;
 
@@ -115,15 +108,8 @@ export async function handleAntiNuke(guild, type, targetId = null) {
   const recent = getRecentCount(counters, counterKey, now, config.antiNuke.windowMs);
   recent.push(now);
   counters.set(counterKey, recent);
-
   if (recent.length >= threshold) {
-    await punishExecutor(
-      guild,
-      executor,
-      config,
-      `${type} threshold exceeded (${recent.length}/${threshold})`,
-      targetId,
-    );
+    await punishExecutor(guild, executor, config, type, `${type} threshold exceeded (${recent.length}/${threshold})`, targetId);
     counters.delete(counterKey);
   }
 }
@@ -135,11 +121,8 @@ export function registerAntiNukeEvent(eventName, type) {
       const guild = eventTarget?.guild || eventTarget;
       const targetId = eventTarget?.id || null;
       if (!guild?.id) return;
-      try {
-        await handleAntiNuke(guild, type, targetId);
-      } catch (error) {
-        logger.error(`Anti-Nuke ${type} failed`, { error: error.message, guildId: guild.id });
-      }
+      try { await handleAntiNuke(guild, type, targetId); }
+      catch (error) { logger.error(`Anti-Nuke ${type} failed`, { error: error.message, guildId: guild.id }); }
     },
   };
 }
