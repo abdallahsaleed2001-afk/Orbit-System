@@ -13,7 +13,6 @@ function getState(map, key) {
 
 function detect(message, config) {
   const text = message.content || '';
-  const lower = text.toLowerCase();
   const reasons = [];
   const now = Date.now();
   const key = `${message.guild.id}:${message.author.id}`;
@@ -22,59 +21,46 @@ function detect(message, config) {
     const list = getState(userMessages, key).filter(t => now - t <= config.autoMod.spam.windowMs);
     list.push(now);
     userMessages.set(key, list);
-    if (list.length >= config.autoMod.spam.maxMessages) reasons.push('message spam');
+    if (list.length >= config.autoMod.spam.maxMessages) reasons.push({ type: 'spam', reason: `message spam (${config.autoMod.spam.maxMessages}/${Math.round(config.autoMod.spam.windowMs / 1000)}s)` });
   }
 
-  const normalized = text.trim().slice(0, 500);
+  const normalized = text.trim().slice(0, 500).toLowerCase();
   if (config.autoMod.duplicate.enabled && normalized) {
     const list = getState(duplicates, key).filter(x => now - x.time <= config.autoMod.duplicate.windowMs);
     list.push({ text: normalized, time: now });
     duplicates.set(key, list);
-    const repeats = list.filter(x => x.text === normalized).length;
-    if (repeats >= config.autoMod.duplicate.maxRepeats) reasons.push('duplicate messages');
+    if (list.filter(x => x.text === normalized).length >= config.autoMod.duplicate.maxRepeats) reasons.push({ type: 'duplicate', reason: `duplicate spam (${config.autoMod.duplicate.maxRepeats})` });
   }
 
   const mentionCount = message.mentions.users.size + message.mentions.roles.size;
-  if (config.autoMod.mentions.enabled && mentionCount >= config.autoMod.mentions.max) reasons.push('mention spam');
-  if (config.autoMod.mentions.enabled && (message.mentions.everyone || /@(everyone|here)/i.test(text))) reasons.push('everyone/here mention');
-  if (config.autoMod.invites.enabled && inviteRegex.test(text)) reasons.push('Discord invite link');
-  if (config.autoMod.links.enabled && urlRegex.test(text)) reasons.push('external link');
+  if (config.autoMod.mentions.enabled && mentionCount >= config.autoMod.mentions.max) reasons.push({ type: 'mentions', reason: `mention spam (${mentionCount})` });
+  if (config.autoMod.mentions.enabled && (message.mentions.everyone || /@(everyone|here)/i.test(text))) reasons.push({ type: 'mentions', reason: 'everyone/here mention' });
+  if (config.autoMod.invites.enabled && inviteRegex.test(text)) reasons.push({ type: 'invites', reason: 'Discord invite link' });
+  if (config.autoMod.links.enabled && urlRegex.test(text)) reasons.push({ type: 'links', reason: 'external link' });
   if (config.autoMod.badWords.enabled && config.autoMod.badWords.words.some(word => {
     const escaped = String(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(`(^|\\s)${escaped}(?=$|\\s|[.!?,])`, 'i').test(text);
-  })) reasons.push('blocked word');
-  if (repeatedCharRegex.test(text)) reasons.push('character spam');
+  })) reasons.push({ type: 'badWords', reason: 'blocked word' });
+  if (repeatedCharRegex.test(text)) reasons.push({ type: 'spam', reason: 'character spam' });
 
   if (config.autoMod.caps.enabled) {
     const letters = text.match(/[A-Za-z]/g) || [];
     const upper = text.match(/[A-Z]/g) || [];
-    if (letters.length >= config.autoMod.caps.minLength && upper.length / letters.length >= config.autoMod.caps.ratio) {
-      reasons.push('excessive caps');
-    }
+    if (letters.length >= config.autoMod.caps.minLength && upper.length / letters.length >= config.autoMod.caps.ratio) reasons.push({ type: 'caps', reason: 'excessive caps' });
   }
 
-  return [...new Set(reasons)];
+  const seen = new Set();
+  return reasons.filter(item => !seen.has(item.type) && seen.add(item.type));
 }
 
-async function executeAction(message, reason, config) {
+async function executeAction(message, action, duration, reason, strike) {
   const deleted = await message.delete().then(() => true).catch(() => false);
-  const strike = await addStrike(message.client, message.guild.id, message.author.id, reason);
-  const level = Math.min(strike.count, config.escalation.length);
-  const escalation = config.escalation[level - 1];
-  let action = config.autoMod.action;
-
-  if (escalation?.action && escalation.action !== 'warn') action = escalation.action;
-  if (escalation?.action === 'warn') action = 'warn';
-
   const member = await message.guild.members.fetch(message.author.id).catch(() => null);
-  if (member && !isWhitelisted(member, config)) {
-    if (action === 'timeout' && member.moderatable) {
-      await member.timeout(escalation?.durationMs || 60000, `AutoMod: ${reason}`).catch(() => {});
-    } else if (action === 'kick' && member.kickable) {
-      await member.kick(`AutoMod: ${reason}`).catch(() => {});
-    } else if (action === 'ban' && member.bannable) {
-      await member.ban({ reason: `AutoMod: ${reason}` }).catch(() => {});
-    }
+
+  if (member && !isWhitelisted(member, await getSecurityConfig(message.client, message.guild.id))) {
+    if (action === 'timeout' && member.moderatable) await member.timeout(Math.min(Math.max(duration || 60000, 1000), 2419200000), `AutoMod: ${reason}`).catch(() => {});
+    else if (action === 'kick' && member.kickable) await member.kick(`AutoMod: ${reason}`).catch(() => {});
+    else if (action === 'ban' && member.bannable) await member.ban({ reason: `AutoMod: ${reason}` }).catch(() => {});
   }
 
   if (action === 'warn' && !message.channel.isDMBased?.()) {
@@ -92,7 +78,8 @@ async function executeAction(message, reason, config) {
     title: 'AutoMod Action',
     description: `${message.author} triggered AutoMod.`,
     fields: [
-      { name: 'Reason', value: reason.slice(0, 1024), inline: true },
+      { name: 'Rule', value: reason.split(':')[0].slice(0, 100), inline: true },
+      { name: 'Reason', value: reason.slice(0, 900), inline: true },
       { name: 'Strike', value: String(strike.count), inline: true },
       { name: 'Action', value: action, inline: true },
       { name: 'Message Deleted', value: deleted ? 'Yes' : 'No', inline: true },
@@ -108,8 +95,21 @@ export async function handleAutoMod(message) {
   const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
   if (!member || member.id === message.guild.ownerId || isWhitelisted(member, config)) return false;
 
-  const reasons = detect(message, config);
-  if (!reasons.length) return false;
-  await executeAction(message, reasons.join(', '), config);
+  const violations = detect(message, config);
+  if (!violations.length) return false;
+
+  const primary = violations[0];
+  const reason = violations.map(v => `${v.type}: ${v.reason}`).join(', ');
+  const strike = await addStrike(message.client, message.guild.id, message.author.id, reason);
+  const rule = config.autoMod[primary.type] || {};
+  const baseAction = rule.punishment || config.autoMod.action || 'delete';
+
+  // The rule's own punishment is used first. Strike escalation takes over from
+  // the second strike onward, so every AutoMod rule remains independently configurable.
+  const escalation = strike.count > 1 ? config.escalation?.find(item => item.strike === strike.count) : null;
+  const action = escalation?.action || baseAction;
+  const duration = escalation?.durationMs || rule.timeoutMs || 60000;
+
+  await executeAction(message, action, duration, reason, strike);
   return true;
 }
