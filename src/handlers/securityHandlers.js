@@ -1,370 +1,83 @@
-import {
-  ActionRowBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  MessageFlags,
-} from 'discord.js';
+import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } from 'discord.js';
 import { getSecurityConfig, updateSecurityConfig } from '../services/security/securityService.js';
-import {
-  buildSecurityDashboard,
-  buildSecurityControls,
-  buildSecurityPanel,
-  buildSecurityPanelControls,
-} from '../commands/Security/security.js';
+import { buildSecurityDashboard, buildSecurityControls, buildSecurityPanel, buildSecurityPanelControls } from '../commands/Security/security.js';
 
-const PANELS = {
-  security_panel_nuke: 'nuke',
-  security_panel_raid: 'raid',
-  security_panel_automod: 'automod',
-  security_panel_punishments: 'punishments',
-  security_panel_whitelist: 'whitelist',
-  security_panel_logs: 'logs',
-  security_panel_settings: 'settings',
-};
+const PANELS = { security_panel_nuke:'nuke', security_panel_raid:'raid', security_panel_automod:'automod', security_panel_punishments:'punishments', security_panel_whitelist:'whitelist', security_panel_logs:'logs', security_panel_settings:'settings' };
+const NUKE_ACTIONS = ['strip','kick','ban'];
+const RAID_ACTIONS = ['timeout','kick','ban'];
+const AUTO_ACTIONS = ['delete','warn','timeout','kick','ban'];
+const NUKE_KEYS = ['channelDelete','channelCreate','roleDelete','roleCreate','roleUpdate','webhookUpdate','webhookDelete','ban','kick','botAdd'];
+const AUTO_KEYS = ['spam','duplicate','mentions','invites','links','caps','badWords'];
 
-function authorized(interaction) {
-  return interaction.customId.split(':').at(-1) === interaction.user.id;
-}
+function authorized(i){return i.customId.split(':').at(-1)===i.user.id;}
+function reject(i){return i.reply({content:'This security dashboard belongs to another moderator.',flags:MessageFlags.Ephemeral});}
+function num(v,f,min=0){const n=Number(v);return Number.isFinite(n)?Math.max(min,n):f;}
+function lines(v){return String(v||'').split(/[\s,]+/).map(x=>x.trim()).filter(Boolean);}
+function field(id,label,value='',style=TextInputStyle.Short){const input=new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(style).setRequired(false);if(value!==undefined&&value!==null&&String(value))input.setValue(String(value).slice(0,4000));return new ActionRowBuilder().addComponents(input);}
+function modal(i,id,title,fields){return i.showModal(new ModalBuilder().setCustomId(`${id}:${i.user.id}`).setTitle(title).addComponents(...fields));}
+function cycle(current,values){const index=values.indexOf(current);return values[(index+1)%values.length];}
+async function panel(i,c,p){const x=await getSecurityConfig(c,i.guildId);return i.update({embeds:[buildSecurityPanel(x,i.guild,p)],components:buildSecurityPanelControls(i.user.id,p,x)});}
+async function dashboard(i,c){const x=await getSecurityConfig(c,i.guildId);return i.update({embeds:[buildSecurityDashboard(x,i.guild)],components:buildSecurityControls(i.user.id)});}
 
-function reject(interaction) {
-  return interaction.reply({ content: 'This security dashboard belongs to another moderator.', flags: MessageFlags.Ephemeral });
-}
+const handlers=[];
+for(const [name,p] of Object.entries(PANELS))handlers.push({name,execute:async(i,c)=>authorized(i)?panel(i,c,p):reject(i)});
+handlers.push({name:'security_refresh',execute:async(i,c)=>authorized(i)?dashboard(i,c):reject(i)});
+handlers.push({name:'security_back',execute:async(i,c)=>authorized(i)?dashboard(i,c):reject(i)});
+handlers.push({name:'security_settings_refresh',execute:async(i,c)=>authorized(i)?panel(i,c,'settings'):reject(i)});
+handlers.push({name:'security_settings_toggle',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{enabled:!x.enabled});return panel(i,c,'settings');}});
 
-function num(value, fallback, min = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.max(min, n) : fallback;
-}
+handlers.push({name:'security_nuke_toggle',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiNuke:{enabled:!x.antiNuke.enabled}});return panel(i,c,'nuke');}});
+handlers.push({name:'security_nuke_window',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiNuke:{windowMs:cycle(x.antiNuke.windowMs,[5000,10000,15000,30000,60000])}});return panel(i,c,'nuke');}});
+handlers.push({name:'security_nuke_lockdown',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiNuke:{lockdown:!x.antiNuke.lockdown}});return panel(i,c,'nuke');}});
+handlers.push({name:'security_nuke_threshold',execute:async i=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(i.client,i.guildId),t=x.antiNuke.thresholds||{};return modal(i,'security_nuke_threshold_modal','Anti-Nuke Thresholds',[field('channelDelete','Channel deletes',t.channelDelete),field('channelCreate','Channel creates',t.channelCreate),field('roleDelete','Role deletes',t.roleDelete),field('roleCreate','Role creates',t.roleCreate),field('botAdd','Bot additions',t.botAdd)]);}});
 
-function bool(value, fallback) {
-  const v = String(value ?? '').trim().toLowerCase();
-  return v === 'true' ? true : v === 'false' ? false : fallback;
-}
+handlers.push({name:'security_raid_toggle',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiRaid:{enabled:!x.antiRaid.enabled}});return panel(i,c,'raid');}});
+handlers.push({name:'security_raid_joins_down',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiRaid:{joins:Math.max(2,x.antiRaid.joins-1)}});return panel(i,c,'raid');}});
+handlers.push({name:'security_raid_joins_up',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiRaid:{joins:Math.min(100,x.antiRaid.joins+1)}});return panel(i,c,'raid');}});
+handlers.push({name:'security_raid_window',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiRaid:{windowMs:cycle(x.antiRaid.windowMs,[5000,10000,15000,30000,60000])}});return panel(i,c,'raid');}});
+handlers.push({name:'security_raid_age',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiRaid:{minAccountAgeMs:cycle(x.antiRaid.minAccountAgeMs,[0,3600000,21600000,86400000,259200000,604800000,2592000000])}});return panel(i,c,'raid');}});
+handlers.push({name:'security_raid_lockdown',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiRaid:{lockdown:!x.antiRaid.lockdown}});return panel(i,c,'raid');}});
+handlers.push({name:'security_raid_punishment',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiRaid:{punishment:cycle(x.antiRaid.punishment||'timeout',RAID_ACTIONS)}});return panel(i,c,'raid');}});
 
-function lines(value) {
-  return String(value || '').split(/[\s,]+/).map(v => v.trim()).filter(Boolean);
-}
+const toggleRule=async(i,c,key)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{autoMod:{[key]:{enabled:!x.autoMod[key].enabled}}});return panel(i,c,'automod');};
+const adjust=async(i,c,key,fieldName,delta,min,max)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{autoMod:{[key]:{[fieldName]:Math.min(max,Math.max(min,x.autoMod[key][fieldName]+delta))}}});return panel(i,c,'automod');};
+handlers.push({name:'security_automod_toggle',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{autoMod:{enabled:!x.autoMod.enabled}});return panel(i,c,'automod');}});
+handlers.push({name:'security_automod_spam_toggle',execute:(i,c)=>toggleRule(i,c,'spam')});
+handlers.push({name:'security_automod_dup_toggle',execute:(i,c)=>toggleRule(i,c,'duplicate')});
+handlers.push({name:'security_automod_invites',execute:(i,c)=>toggleRule(i,c,'invites')});
+handlers.push({name:'security_automod_links',execute:(i,c)=>toggleRule(i,c,'links')});
+handlers.push({name:'security_automod_caps',execute:(i,c)=>toggleRule(i,c,'caps')});
+handlers.push({name:'security_automod_spam_down',execute:(i,c)=>adjust(i,c,'spam','maxMessages',-1,2,30)});
+handlers.push({name:'security_automod_spam_up',execute:(i,c)=>adjust(i,c,'spam','maxMessages',1,2,30)});
+handlers.push({name:'security_automod_dup_down',execute:(i,c)=>adjust(i,c,'duplicate','maxRepeats',-1,2,15)});
+handlers.push({name:'security_automod_dup_up',execute:(i,c)=>adjust(i,c,'duplicate','maxRepeats',1,2,15)});
+handlers.push({name:'security_automod_mentions_down',execute:(i,c)=>adjust(i,c,'mentions','max',-1,1,30)});
+handlers.push({name:'security_automod_mentions_up',execute:(i,c)=>adjust(i,c,'mentions','max',1,1,30)});
+handlers.push({name:'security_automod_action',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{autoMod:{action:cycle(x.autoMod.action||'delete',AUTO_ACTIONS)}});return panel(i,c,'automod');}});
+handlers.push({name:'security_automod_badwords',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);return modal(i,'security_automod_badwords_modal','AutoMod Blocked Words',[field('words','Words, separated by spaces',(x.autoMod.badWords.words||[]).join(' '),TextInputStyle.Paragraph)]);}});
+for(const key of AUTO_KEYS)handlers.push({name:`security_automod_${key}_punishment`,execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{autoMod:{[key]:{punishment:cycle(x.autoMod[key].punishment||'delete',AUTO_ACTIONS)}}});return panel(i,c,'automod');}});
 
-function field(id, label, value = '', style = TextInputStyle.Short) {
-  const input = new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(style).setRequired(false);
-  if (value !== undefined && value !== null && String(value)) input.setValue(String(value).slice(0, 4000));
-  return new ActionRowBuilder().addComponents(input);
-}
+handlers.push({name:'security_pun_decay_down',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{strikeDecayMs:Math.max(3600000,x.strikeDecayMs-3600000)});return panel(i,c,'punishments');}});
+handlers.push({name:'security_pun_decay_up',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{strikeDecayMs:Math.min(30*86400000,x.strikeDecayMs+3600000)});return panel(i,c,'punishments');}});
+handlers.push({name:'security_pun_raid',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiRaid:{punishment:cycle(x.antiRaid.punishment||'timeout',RAID_ACTIONS)}});return panel(i,c,'punishments');}});
+for(const key of NUKE_KEYS)handlers.push({name:`security_pun_nuke_${key}`,execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{antiNuke:{punishments:{[key]:cycle(x.antiNuke.punishments[key]||'strip',NUKE_ACTIONS)}}});return panel(i,c,'punishments');}});
+for(const key of AUTO_KEYS)handlers.push({name:`security_pun_auto_${key}`,execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);await updateSecurityConfig(c,i.guildId,{autoMod:{[key]:{punishment:cycle(x.autoMod[key].punishment||'delete',AUTO_ACTIONS)}}});return panel(i,c,'punishments');}});
+for(let strike=1;strike<=10;strike++)handlers.push({name:`security_pun_level_${strike}`,execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);const level=x.escalation.find(e=>e.strike===strike);if(!level)return panel(i,c,'punishments');const escalation=x.escalation.map(e=>e.strike===strike?{...e,action:cycle(e.action,['warn','timeout','kick','ban'])}:e);await updateSecurityConfig(c,i.guildId,{escalation});return panel(i,c,'punishments');}});
 
-function modal(interaction, id, title, fields) {
-  return interaction.showModal(new ModalBuilder().setCustomId(`${id}:${interaction.user.id}`).setTitle(title).addComponents(...fields));
-}
+handlers.push({name:'security_whitelist_users',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);return modal(i,'security_whitelist_users_modal','Whitelist Users',[field('users','User IDs, one per line',(x.whitelist.users||[]).join('\n'),TextInputStyle.Paragraph)]);}});
+handlers.push({name:'security_whitelist_roles',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);return modal(i,'security_whitelist_roles_modal','Whitelist Roles',[field('roles','Role IDs, one per line',(x.whitelist.roles||[]).join('\n'),TextInputStyle.Paragraph)]);}});
+handlers.push({name:'security_whitelist_bots',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);return modal(i,'security_whitelist_bots_modal','Whitelist Bots',[field('bots','Bot IDs, one per line',(x.whitelist.bots||[]).join('\n'),TextInputStyle.Paragraph)]);}});
+handlers.push({name:'security_logs_channel',execute:async i=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(i.client,i.guildId);return modal(i,'security_logs_channel_modal','Security Log Channel',[field('channel','Channel ID',x.logChannelId||'')]);}});
+handlers.push({name:'security_logs_ignored',execute:async i=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(i.client,i.guildId);return modal(i,'security_logs_ignored_modal','Ignored Channels',[field('channels','Channel IDs, one per line',(x.ignoredChannels||[]).join('\n'),TextInputStyle.Paragraph)]);}});
 
-async function updatePanel(interaction, client, panel) {
-  const config = await getSecurityConfig(client, interaction.guildId);
-  return interaction.update({
-    embeds: [buildSecurityPanel(config, interaction.guild, panel)],
-    components: buildSecurityPanelControls(interaction.user.id, panel, config),
-  });
-}
+export const securityButtonHandlers=handlers;
 
-async function updateDashboard(interaction, client) {
-  const config = await getSecurityConfig(client, interaction.guildId);
-  return interaction.update({
-    embeds: [buildSecurityDashboard(config, interaction.guild)],
-    components: buildSecurityControls(interaction.user.id),
-  });
-}
-
-function changeCycle(current, values) {
-  const index = values.indexOf(current);
-  return values[(index + 1) % values.length];
-}
-
-const handlers = [];
-
-for (const [name, panel] of Object.entries(PANELS)) {
-  handlers.push({
-    name,
-    async execute(interaction, client) {
-      if (!authorized(interaction)) return reject(interaction);
-      return updatePanel(interaction, client, panel);
-    },
-  });
-}
-
-handlers.push({
-  name: 'security_refresh',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    return updateDashboard(interaction, client);
-  },
-});
-
-handlers.push({
-  name: 'security_back',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    return updateDashboard(interaction, client);
-  },
-});
-
-handlers.push({
-  name: 'security_settings_refresh',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    return updatePanel(interaction, client, 'settings');
-  },
-});
-
-handlers.push({
-  name: 'security_settings_toggle',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { enabled: !config.enabled });
-    return updatePanel(interaction, client, 'settings');
-  },
-});
-
-handlers.push({
-  name: 'security_nuke_toggle',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { antiNuke: { enabled: !config.antiNuke.enabled } });
-    return updatePanel(interaction, client, 'nuke');
-  },
-});
-
-handlers.push({
-  name: 'security_nuke_action',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { antiNuke: { action: changeCycle(config.antiNuke.action, ['strip', 'kick', 'ban']) } });
-    return updatePanel(interaction, client, 'nuke');
-  },
-});
-
-handlers.push({
-  name: 'security_nuke_window',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    const values = [5000, 10000, 15000, 30000, 60000];
-    await updateSecurityConfig(client, interaction.guildId, { antiNuke: { windowMs: changeCycle(config.antiNuke.windowMs, values) } });
-    return updatePanel(interaction, client, 'nuke');
-  },
-});
-
-handlers.push({
-  name: 'security_nuke_lockdown',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { antiNuke: { lockdown: !config.antiNuke.lockdown } });
-    return updatePanel(interaction, client, 'nuke');
-  },
-});
-
-handlers.push({
-  name: 'security_nuke_threshold',
-  async execute(interaction) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(interaction.client, interaction.guildId);
-    const t = config.antiNuke.thresholds || {};
-    return modal(interaction, 'security_nuke_threshold_modal', 'Anti-Nuke Thresholds', [
-      field('channelDelete', 'Channel deletes', t.channelDelete),
-      field('channelCreate', 'Channel creates', t.channelCreate),
-      field('roleDelete', 'Role deletes', t.roleDelete),
-      field('roleCreate', 'Role creates', t.roleCreate),
-      field('botAdd', 'Bot additions', t.botAdd),
-    ]);
-  },
-});
-
-handlers.push({
-  name: 'security_raid_toggle',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { antiRaid: { enabled: !config.antiRaid.enabled } });
-    return updatePanel(interaction, client, 'raid');
-  },
-});
-
-handlers.push({
-  name: 'security_raid_joins_down',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { antiRaid: { joins: Math.max(2, config.antiRaid.joins - 1) } });
-    return updatePanel(interaction, client, 'raid');
-  },
-});
-
-handlers.push({
-  name: 'security_raid_joins_up',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { antiRaid: { joins: Math.min(100, config.antiRaid.joins + 1) } });
-    return updatePanel(interaction, client, 'raid');
-  },
-});
-
-handlers.push({
-  name: 'security_raid_action',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { antiRaid: { action: changeCycle(config.antiRaid.action, ['timeout', 'kick']) } });
-    return updatePanel(interaction, client, 'raid');
-  },
-});
-
-handlers.push({
-  name: 'security_raid_window',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { antiRaid: { windowMs: changeCycle(config.antiRaid.windowMs, [5000, 10000, 15000, 30000, 60000]) } });
-    return updatePanel(interaction, client, 'raid');
-  },
-});
-
-handlers.push({
-  name: 'security_raid_age',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    const values = [0, 3600000, 21600000, 86400000, 259200000, 604800000, 2592000000];
-    await updateSecurityConfig(client, interaction.guildId, { antiRaid: { minAccountAgeMs: changeCycle(config.antiRaid.minAccountAgeMs, values) } });
-    return updatePanel(interaction, client, 'raid');
-  },
-});
-
-handlers.push({
-  name: 'security_raid_lockdown',
-  async execute(interaction, client) {
-    if (!authorized(interaction)) return reject(interaction);
-    const config = await getSecurityConfig(client, interaction.guildId);
-    await updateSecurityConfig(client, interaction.guildId, { antiRaid: { lockdown: !config.antiRaid.lockdown } });
-    return updatePanel(interaction, client, 'raid');
-  },
-});
-
-const automodToggle = async (interaction, client, key) => {
-  if (!authorized(interaction)) return reject(interaction);
-  const config = await getSecurityConfig(client, interaction.guildId);
-  await updateSecurityConfig(client, interaction.guildId, { autoMod: { [key]: { enabled: !config.autoMod[key].enabled } } });
-  return updatePanel(interaction, client, 'automod');
-};
-
-handlers.push({ name: 'security_automod_toggle', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { enabled: !x.autoMod.enabled } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_spam_toggle', execute: (i, c) => automodToggle(i, c, 'spam') });
-handlers.push({ name: 'security_automod_dup_toggle', execute: (i, c) => automodToggle(i, c, 'duplicate') });
-handlers.push({ name: 'security_automod_spam_down', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { spam: { maxMessages: Math.max(2, x.autoMod.spam.maxMessages - 1) } } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_spam_up', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { spam: { maxMessages: Math.min(30, x.autoMod.spam.maxMessages + 1) } } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_dup_down', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { duplicate: { maxRepeats: Math.max(2, x.autoMod.duplicate.maxRepeats - 1) } } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_dup_up', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { duplicate: { maxRepeats: Math.min(15, x.autoMod.duplicate.maxRepeats + 1) } } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_mentions_down', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { mentions: { max: Math.max(1, x.autoMod.mentions.max - 1) } } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_mentions_up', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { mentions: { max: Math.min(30, x.autoMod.mentions.max + 1) } } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_invites', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { invites: { enabled: !x.autoMod.invites.enabled } } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_links', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { links: { enabled: !x.autoMod.links.enabled } } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_caps', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { caps: { enabled: !x.autoMod.caps.enabled } } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_action', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { action: changeCycle(x.autoMod.action, ['delete', 'warn', 'timeout']) } }); return updatePanel(i, c, 'automod'); } });
-handlers.push({ name: 'security_automod_badwords', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); return modal(i, 'security_automod_badwords_modal', 'AutoMod Blocked Words', [field('words', 'Words, separated by spaces', (x.autoMod.badWords.words || []).join(' '), TextInputStyle.Paragraph)]); } });
-
-handlers.push({ name: 'security_pun_decay_down', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { strikeDecayMs: Math.max(3600000, x.strikeDecayMs - 3600000) }); return updatePanel(i, c, 'punishments'); } });
-handlers.push({ name: 'security_pun_decay_up', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { strikeDecayMs: Math.min(30 * 86400000, x.strikeDecayMs + 3600000) }); return updatePanel(i, c, 'punishments'); } });
-
-handlers.push({ name: 'security_whitelist_users', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); return modal(i, 'security_whitelist_users_modal', 'Whitelist Users', [field('users', 'User IDs, one per line', (x.whitelist.users || []).join('\n'), TextInputStyle.Paragraph)]); } });
-handlers.push({ name: 'security_whitelist_roles', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); return modal(i, 'security_whitelist_roles_modal', 'Whitelist Roles', [field('roles', 'Role IDs, one per line', (x.whitelist.roles || []).join('\n'), TextInputStyle.Paragraph)]); } });
-handlers.push({ name: 'security_whitelist_bots', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); return modal(i, 'security_whitelist_bots_modal', 'Whitelist Bots', [field('bots', 'Bot IDs, one per line', (x.whitelist.bots || []).join('\n'), TextInputStyle.Paragraph)]); } });
-handlers.push({ name: 'security_logs_channel', execute: async (i) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(i.client, i.guildId); return modal(i, 'security_logs_channel_modal', 'Security Log Channel', [field('channel', 'Channel ID', x.logChannelId || '')]); } });
-handlers.push({ name: 'security_logs_ignored', execute: async (i) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(i.client, i.guildId); return modal(i, 'security_logs_ignored_modal', 'Ignored Channels', [field('channels', 'Channel IDs, one per line', (x.ignoredChannels || []).join('\n'), TextInputStyle.Paragraph)]); } });
-
-for (let strike = 1; strike <= 10; strike++) {
-  handlers.push({
-    name: `security_pun_level_${strike}`,
-    async execute(i, c) {
-      if (!authorized(i)) return reject(i);
-      const x = await getSecurityConfig(c, i.guildId);
-      const level = (x.escalation || []).find(e => e.strike === strike);
-      if (!level) return updatePanel(i, c, 'punishments');
-      const actions = ['warn', 'timeout', 'kick', 'ban'];
-      const nextAction = changeCycle(level.action, actions);
-      const escalation = x.escalation.map(e => e.strike === strike ? { ...e, action: nextAction } : e);
-      await updateSecurityConfig(c, i.guildId, { escalation });
-      return updatePanel(i, c, 'punishments');
-    },
-  });
-}
-
-export const securityButtonHandlers = handlers;
-
-const modalHandlers = [
-  {
-    name: 'security_nuke_threshold_modal',
-    async execute(i, c) {
-      if (!authorized(i)) return reject(i);
-      const x = await getSecurityConfig(c, i.guildId);
-      const t = { ...x.antiNuke.thresholds };
-      for (const key of Object.keys(t)) {
-        const inputId = key === 'channelDelete' ? 'channelDelete' : key === 'channelCreate' ? 'channelCreate' : key === 'roleDelete' ? 'roleDelete' : key === 'roleCreate' ? 'roleCreate' : key === 'botAdd' ? 'botAdd' : null;
-        if (inputId) t[key] = num(i.fields.getTextInputValue(inputId), t[key], 1);
-      }
-      await updateSecurityConfig(c, i.guildId, { antiNuke: { thresholds: t } });
-      return i.update({ embeds: [buildSecurityPanel(await getSecurityConfig(c, i.guildId), i.guild, 'nuke')], components: buildSecurityPanelControls(i.user.id, 'nuke', await getSecurityConfig(c, i.guildId)) });
-    },
-  },
-  {
-    name: 'security_automod_badwords_modal',
-    async execute(i, c) {
-      if (!authorized(i)) return reject(i);
-      const words = lines(i.fields.getTextInputValue('words')).slice(0, 100);
-      await updateSecurityConfig(c, i.guildId, { autoMod: { badWords: { enabled: words.length > 0, words } } });
-      const x = await getSecurityConfig(c, i.guildId);
-      return i.update({ embeds: [buildSecurityPanel(x, i.guild, 'automod')], components: buildSecurityPanelControls(i.user.id, 'automod', x) });
-    },
-  },
-  {
-    name: 'security_whitelist_users_modal',
-    async execute(i, c) {
-      if (!authorized(i)) return reject(i);
-      const x = await updateSecurityConfig(c, i.guildId, { whitelist: { users: lines(i.fields.getTextInputValue('users')).slice(0, 100) } });
-      return i.update({ embeds: [buildSecurityPanel(x, i.guild, 'whitelist')], components: buildSecurityPanelControls(i.user.id, 'whitelist', x) });
-    },
-  },
-  {
-    name: 'security_whitelist_roles_modal',
-    async execute(i, c) {
-      if (!authorized(i)) return reject(i);
-      const x = await updateSecurityConfig(c, i.guildId, { whitelist: { roles: lines(i.fields.getTextInputValue('roles')).slice(0, 100) } });
-      return i.update({ embeds: [buildSecurityPanel(x, i.guild, 'whitelist')], components: buildSecurityPanelControls(i.user.id, 'whitelist', x) });
-    },
-  },
-  {
-    name: 'security_whitelist_bots_modal',
-    async execute(i, c) {
-      if (!authorized(i)) return reject(i);
-      const x = await updateSecurityConfig(c, i.guildId, { whitelist: { bots: lines(i.fields.getTextInputValue('bots')).slice(0, 100) } });
-      return i.update({ embeds: [buildSecurityPanel(x, i.guild, 'whitelist')], components: buildSecurityPanelControls(i.user.id, 'whitelist', x) });
-    },
-  },
-  {
-    name: 'security_logs_channel_modal',
-    async execute(i, c) {
-      if (!authorized(i)) return reject(i);
-      const x = await updateSecurityConfig(c, i.guildId, { logChannelId: i.fields.getTextInputValue('channel').trim() || null });
-      return i.update({ embeds: [buildSecurityPanel(x, i.guild, 'logs')], components: buildSecurityPanelControls(i.user.id, 'logs', x) });
-    },
-  },
-  {
-    name: 'security_logs_ignored_modal',
-    async execute(i, c) {
-      if (!authorized(i)) return reject(i);
-      const x = await updateSecurityConfig(c, i.guildId, { ignoredChannels: lines(i.fields.getTextInputValue('channels')).slice(0, 100) });
-      return i.update({ embeds: [buildSecurityPanel(x, i.guild, 'logs')], components: buildSecurityPanelControls(i.user.id, 'logs', x) });
-    },
-  },
+export const securityModalHandlers=[
+{name:'security_nuke_threshold_modal',execute:async(i,c)=>{if(!authorized(i))return reject(i);const x=await getSecurityConfig(c,i.guildId);const t={...x.antiNuke.thresholds};for(const key of ['channelDelete','channelCreate','roleDelete','roleCreate','botAdd'])t[key]=num(i.fields.getTextInputValue(key),t[key],1);await updateSecurityConfig(c,i.guildId,{antiNuke:{thresholds:t}});return panel(i,c,'nuke');}},
+{name:'security_automod_badwords_modal',execute:async(i,c)=>{if(!authorized(i))return reject(i);const words=lines(i.fields.getTextInputValue('words')).slice(0,100);await updateSecurityConfig(c,i.guildId,{autoMod:{badWords:{enabled:words.length>0,words}}});return panel(i,c,'automod');}},
+{name:'security_whitelist_users_modal',execute:async(i,c)=>{if(!authorized(i))return reject(i);await updateSecurityConfig(c,i.guildId,{whitelist:{users:lines(i.fields.getTextInputValue('users')).slice(0,100)}});return panel(i,c,'whitelist');}},
+{name:'security_whitelist_roles_modal',execute:async(i,c)=>{if(!authorized(i))return reject(i);await updateSecurityConfig(c,i.guildId,{whitelist:{roles:lines(i.fields.getTextInputValue('roles')).slice(0,100)}});return panel(i,c,'whitelist');}},
+{name:'security_whitelist_bots_modal',execute:async(i,c)=>{if(!authorized(i))return reject(i);await updateSecurityConfig(c,i.guildId,{whitelist:{bots:lines(i.fields.getTextInputValue('bots')).slice(0,100)}});return panel(i,c,'whitelist');}},
+{name:'security_logs_channel_modal',execute:async(i,c)=>{if(!authorized(i))return reject(i);await updateSecurityConfig(c,i.guildId,{logChannelId:i.fields.getTextInputValue('channel').trim()||null});return panel(i,c,'logs');}},
+{name:'security_logs_ignored_modal',execute:async(i,c)=>{if(!authorized(i))return reject(i);await updateSecurityConfig(c,i.guildId,{ignoredChannels:lines(i.fields.getTextInputValue('channels')).slice(0,100)});return panel(i,c,'logs');}},
 ];
-
-export const securityModalHandlers = modalHandlers;
