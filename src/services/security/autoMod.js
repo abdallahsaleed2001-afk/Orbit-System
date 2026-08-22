@@ -54,25 +54,17 @@ function detect(message, config) {
 }
 
 async function executeAction(message, action, duration, reason, strike) {
-  const deleted = await message.delete().then(() => true).catch(() => false);
   const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+  const config = await getSecurityConfig(message.client, message.guild.id);
 
-  if (member && !isWhitelisted(member, await getSecurityConfig(message.client, message.guild.id))) {
-    if (action === 'timeout' && member.moderatable) await member.timeout(Math.min(Math.max(duration || 60000, 1000), 2419200000), `AutoMod: ${reason}`).catch(() => {});
-    else if (action === 'kick' && member.kickable) await member.kick(`AutoMod: ${reason}`).catch(() => {});
-    else if (action === 'ban' && member.bannable) await member.ban({ reason: `AutoMod: ${reason}` }).catch(() => {});
-  }
+  // Whitelist is an absolute bypass: no deletion, timeout, kick, ban, or warning.
+  if (!member || isWhitelisted(member, config)) return false;
 
-  if (action === 'warn' && !message.channel.isDMBased?.()) {
-    const warning = await message.channel.send({
-      content: `${message.author}, warning: **${reason}**. Strike **${strike.count}**.`,
-      allowedMentions: { users: [message.author.id] },
-    }).catch(() => null);
-    if (warning) {
-      const timer = setTimeout(() => warning.delete().catch(() => {}), 5000);
-      timer.unref?.();
-    }
-  }
+  const deleted = await message.delete().then(() => true).catch(() => false);
+
+  if (action === 'timeout' && member.moderatable) await member.timeout(Math.min(Math.max(duration || 60000, 1000), 2419200000), `AutoMod: ${reason}`).catch(() => {});
+  else if (action === 'kick' && member.kickable) await member.kick(`AutoMod: ${reason}`).catch(() => {});
+  else if (action === 'ban' && member.bannable) await member.ban({ reason: `AutoMod: ${reason}` }).catch(() => {});
 
   await sendSecurityLog(message.client, message.guild, {
     title: 'AutoMod Action',
@@ -85,6 +77,7 @@ async function executeAction(message, action, duration, reason, strike) {
       { name: 'Message Deleted', value: deleted ? 'Yes' : 'No', inline: true },
     ],
   });
+  return true;
 }
 
 export async function handleAutoMod(message) {
@@ -98,15 +91,17 @@ export async function handleAutoMod(message) {
   const violations = detect(message, config);
   if (!violations.length) return false;
 
+  // Re-check immediately before changing strike state in case the whitelist was changed during detection.
+  const latestConfig = await getSecurityConfig(message.client, message.guild.id);
+  const latestMember = await message.guild.members.fetch(message.author.id).catch(() => member);
+  if (!latestMember || latestMember.id === message.guild.ownerId || isWhitelisted(latestMember, latestConfig)) return false;
+
   const primary = violations[0];
   const reason = violations.map(v => `${v.type}: ${v.reason}`).join(', ');
   const strike = await addStrike(message.client, message.guild.id, message.author.id, reason);
-  const rule = config.autoMod[primary.type] || {};
-  const baseAction = rule.punishment || config.autoMod.action || 'delete';
-
-  // The rule's own punishment is used first. Strike escalation takes over from
-  // the second strike onward, so every AutoMod rule remains independently configurable.
-  const escalation = strike.count > 1 ? config.escalation?.find(item => item.strike === strike.count) : null;
+  const rule = latestConfig.autoMod[primary.type] || {};
+  const baseAction = rule.punishment || latestConfig.autoMod.action || 'delete';
+  const escalation = strike.count > 1 ? latestConfig.escalation?.find(item => item.strike === strike.count) : null;
   const action = escalation?.action || baseAction;
   const duration = escalation?.durationMs || rule.timeoutMs || 60000;
 
