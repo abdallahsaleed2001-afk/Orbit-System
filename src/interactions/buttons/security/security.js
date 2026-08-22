@@ -1,6 +1,11 @@
 import { securityButtonHandlers } from '../../../handlers/securityHandlers.js';
 import { securityAdvancedButtonHandlers } from '../../../handlers/securityAdvancedHandlers.js';
+import { securityDashboardButtonHandlers } from '../../../handlers/securityDashboardHandlers.js';
 
-// Advanced handlers are last so they intentionally override the older flat
-// AutoMod/Strike handlers while preserving every other Security control.
-export default [...securityButtonHandlers, ...securityAdvancedButtonHandlers];
+// Order matters: the hierarchical dashboard handlers are last so their
+// dedicated IDs take precedence over the older flat panel controls.
+export default [
+  ...securityButtonHandlers,
+  ...securityAdvancedButtonHandlers,
+  ...securityDashboardButtonHandlers,
+];
