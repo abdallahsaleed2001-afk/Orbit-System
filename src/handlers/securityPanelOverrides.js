@@ -5,6 +5,7 @@ import { securityDashboardButtonHandlers } from './securityDashboardHandlers.js'
 const names = new Set([
   'security_panel_nuke',
   'security_panel_raid',
+  'security_panel_automod',
   'security_panel_punishments',
   'security_panel_strikes',
   'security_panel_whitelist',
@@ -15,6 +16,7 @@ const names = new Set([
 const target = {
   security_panel_nuke: 'security_panel_nuke2',
   security_panel_raid: 'security_panel_raid2',
+  security_panel_automod: 'security_panel_automod2',
   security_panel_punishments: 'security_panel_punishments2',
   security_panel_strikes: 'security_panel_strikes2',
   security_panel_whitelist: 'security_panel_whitelist2',
@@ -24,11 +26,23 @@ const target = {
 
 export default [...names].map(name => ({
   name,
+
   execute: async (interaction, client) => {
-    const handler = securityDashboardButtonHandlers.find(h => h.name === target[name]);
-    if (!handler) return interaction.reply({ content: 'Security panel handler unavailable.', ephemeral: true });
+    const handler = securityDashboardButtonHandlers.find(
+      h => h.name === target[name]
+    );
+
+    if (!handler) {
+      return interaction.reply({
+        content: 'Security panel handler unavailable.',
+        ephemeral: true,
+      });
+    }
+
     const original = interaction.customId;
+
     interaction.customId = `${target[name]}:${interaction.user.id}`;
+
     try {
       return await handler.execute(interaction, client);
     } finally {
