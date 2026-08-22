@@ -1,4 +1,4 @@
-import { AuditLogEvent, PermissionFlagsBits } from 'discord.js';
+import { AuditLogEvent } from 'discord.js';
 import { getSecurityConfig, isWhitelisted, sendSecurityLog, getRecentCount } from './securityService.js';
 import { logger } from '../../utils/logger.js';
 
@@ -38,20 +38,17 @@ async function punishExecutor(guild, executor, config, reason) {
   } else if (config.antiNuke.action === 'kick' && member.kickable) {
     await member.kick(`Anti-Nuke: ${reason}`).catch(() => {});
   } else if (member.manageable) {
-    const removable = member.roles.cache.filter(r => r.id !== guild.id && r.editable && r.permissions.bitfield === 0n ? true : r.editable);
+    const removable = member.roles.cache.filter(role => role.id !== guild.id && role.editable);
     await member.roles.remove(removable, `Anti-Nuke: ${reason}`).catch(() => {});
-  }
-
-  if (config.antiNuke.lockdown) {
-    await guild.channels.cache.forEach(channel => {
-      if (!channel.isTextBased?.() || !channel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)) return;
-    });
   }
 
   await sendSecurityLog(guild.client, guild, {
     title: 'Anti-Nuke Triggered',
     description: `**${executor.tag || executor.username}** triggered the Anti-Nuke protection.`,
-    fields: [{ name: 'Reason', value: reason }, { name: 'Action', value: config.antiNuke.action }],
+    fields: [
+      { name: 'Reason', value: reason },
+      { name: 'Action', value: config.antiNuke.action },
+    ],
   });
   return true;
 }
@@ -70,25 +67,29 @@ export async function handleAntiNuke(guild, type, targetId = null) {
   if (!member || member.id === guild.ownerId || isWhitelisted(member, config)) return;
 
   const now = Date.now();
-  const recent = getRecentCount(counters, key(guild.id, executor.id, type), now, config.antiNuke.windowMs);
+  const counterKey = key(guild.id, executor.id, type);
+  const recent = getRecentCount(counters, counterKey, now, config.antiNuke.windowMs);
   recent.push(now);
-  counters.set(key(guild.id, executor.id, type), recent);
+  counters.set(counterKey, recent);
 
   if (recent.length >= threshold) {
     await punishExecutor(guild, executor, config, `${type} threshold exceeded (${recent.length}/${threshold})`);
-    counters.delete(key(guild.id, executor.id, type));
+    counters.delete(counterKey);
   }
 }
 
 export function registerAntiNukeEvent(eventName, type) {
   return {
     name: eventName,
-    async execute(eventTarget, client) {
+    async execute(eventTarget) {
       const guild = eventTarget?.guild || eventTarget;
       const targetId = eventTarget?.id || null;
       if (!guild?.id) return;
-      try { await handleAntiNuke(guild, type, targetId); }
-      catch (error) { logger.error(`Anti-Nuke ${type} failed`, { error: error.message, guildId: guild.id }); }
+      try {
+        await handleAntiNuke(guild, type, targetId);
+      } catch (error) {
+        logger.error(`Anti-Nuke ${type} failed`, { error: error.message, guildId: guild.id });
+      }
     },
   };
 }
