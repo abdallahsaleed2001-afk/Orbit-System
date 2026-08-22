@@ -21,7 +21,7 @@ function key(guildId, executorId, type) {
   return `${guildId}:${executorId}:${type}`;
 }
 
-async function findExecutor(guild, auditType, targetId) {
+async function findExecutor(guild, auditType, targetId = null) {
   const logs = await guild.fetchAuditLogs({ type: auditType, limit: 10 }).catch(() => null);
   const entry = logs?.entries?.find(entry => {
     if (Date.now() - entry.createdTimestamp > 15000) return false;
@@ -67,16 +67,9 @@ async function punishExecutor(guild, executor, config, reason, targetId) {
     actionTaken = stripped ? 'strip' : 'none';
   }
 
-  if (config.antiNuke.lockdown && guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
-    if (['channelDelete', 'roleDelete', 'webhookDelete', 'botAdd'].includes(reason.split(' ')[0])) {
-      // The raid system owns timed lockdowns; Anti-Nuke only emits an alert here.
-      // This prevents an accidental permanent server-wide lockdown from a single event.
-    }
-  }
-
   if (reason.startsWith('botAdd') && targetId) {
     const bot = await guild.members.fetch(targetId).catch(() => null);
-    if (bot?.user?.bot && bot.kickable && bot.id !== guild.client.user.id) {
+    if (bot?.user?.bot && bot.kickable && bot.id !== guild.client.user?.id) {
       await bot.kick('Anti-Nuke: unauthorized bot addition').catch(() => {});
     }
   }
@@ -101,7 +94,8 @@ export async function handleAntiNuke(guild, type, targetId = null) {
   const threshold = Number(config.antiNuke.thresholds?.[type] || 0);
   if (!auditType || threshold <= 0) return;
 
-  const executor = await findExecutor(guild, auditType, targetId);
+  const auditTargetId = type.startsWith('webhook') ? null : targetId;
+  const executor = await findExecutor(guild, auditType, auditTargetId);
   if (!executor || executor.id === guild.client.user?.id) return;
 
   const member = await guild.members.fetch(executor.id).catch(() => null);
