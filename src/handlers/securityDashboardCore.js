@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { getSecurityConfig, updateSecurityConfig, getStrikes, clearStrikes } from '../services/security/securityService.js';
+import { buildSecurityDashboard as buildOriginalSecurityDashboard, buildSecurityControls } from '../commands/Security/security.js';
 
 const NUKE_ACTIONS = ['strip', 'kick', 'ban'];
 const RAID_ACTIONS = ['timeout', 'kick', 'ban'];
@@ -20,14 +21,13 @@ function embed(title, description, guild, color = 0x5865f2) {
     .setTimestamp();
 }
 
+// IMPORTANT: this must be the exact same dashboard used by /security.
+// Do not maintain a second dashboard layout here.
 export async function buildSecurityDashboard(client, guild, userId) {
   const config = await getSecurityConfig(client, guild.id);
   return {
-    embeds: [embed('🛡️ Server Protection', `**${guild.name}**\n\nChoose a security system to configure.\n\n🛡️ Anti-Nuke — ${config.antiNuke?.enabled ? '🟢' : '🔴'}\n🚨 Anti-Raid — ${config.antiRaid?.enabled ? '🟢' : '🔴'}\n🤖 AutoMod — ${config.autoMod?.enabled ? '🟢' : '🔴'}\n⚖️ Punishments — ${(config.escalation || []).length} escalation levels\n🏆 Strikes & Warnings — management enabled\n👤 Whitelist — ${(config.whitelist?.users?.length || 0) + (config.whitelist?.roles?.length || 0) + (config.whitelist?.bots?.length || 0)} entries\n📋 Logs — ${config.logChannelId ? `<#${config.logChannelId}>` : 'not configured'}`, guild, 0x57f287)],
-    components: [
-      row(button(`security_panel_nuke2:${userId}`, '🛡️ Anti-Nuke', ButtonStyle.Danger), button(`security_panel_raid2:${userId}`, '🚨 Anti-Raid', ButtonStyle.Primary), button(`security_panel_automod2:${userId}`, '🤖 AutoMod', ButtonStyle.Primary), button(`security_panel_punishments2:${userId}`, '⚖️ Punishments', ButtonStyle.Primary)),
-      row(button(`security_panel_strikes2:${userId}`, '🏆 Strikes', ButtonStyle.Danger), button(`security_panel_whitelist2:${userId}`, '👤 Whitelist'), button(`security_panel_logs2:${userId}`, '📋 Logs'), button(`security_panel_settings2:${userId}`, '⚙️ Settings'), button(`security_refresh:${userId}`, '🔄 Refresh', ButtonStyle.Success)),
-    ],
+    embeds: [buildOriginalSecurityDashboard(config, guild)],
+    components: buildSecurityControls(userId),
   };
 }
 
