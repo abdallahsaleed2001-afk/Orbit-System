@@ -1,7 +1,7 @@
 import { securityDashboardButtonHandlers } from './securityDashboardHandlers.js';
+import securityAutoModDashboard from './securityAutoModDashboard.js';
 
-// Alias the original /security panel IDs to the new hierarchical dashboard.
-// This keeps existing command messages/buttons compatible after deployment.
+// Keep old /security panel button IDs compatible with the new dashboard.
 const names = new Set([
   'security_panel_nuke',
   'security_panel_raid',
@@ -26,11 +26,10 @@ const target = {
 
 export default [...names].map(name => ({
   name,
-
   execute: async (interaction, client) => {
-    const handler = securityDashboardButtonHandlers.find(
-      h => h.name === target[name]
-    );
+    const targetName = target[name];
+    const handlers = [...securityDashboardButtonHandlers, ...securityAutoModDashboard];
+    const handler = handlers.find(h => h.name === targetName);
 
     if (!handler) {
       return interaction.reply({
@@ -40,8 +39,7 @@ export default [...names].map(name => ({
     }
 
     const original = interaction.customId;
-
-    interaction.customId = `${target[name]}:${interaction.user.id}`;
+    interaction.customId = `${targetName}:${interaction.user.id}`;
 
     try {
       return await handler.execute(interaction, client);
