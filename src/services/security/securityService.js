@@ -1,6 +1,9 @@
 import { getFromDb, setInDb } from '../../utils/database.js';
 import { logger } from '../../utils/logger.js';
 
+const NukeTypes = ['channelDelete','channelCreate','roleDelete','roleCreate','roleUpdate','webhookUpdate','webhookDelete','ban','kick','botAdd'];
+const AutoModTypes = ['spam','duplicate','mentions','invites','links','caps','badWords'];
+
 export const SECURITY_DEFAULTS = {
   enabled: true,
   antiNuke: {
@@ -8,6 +11,7 @@ export const SECURITY_DEFAULTS = {
     windowMs: 10000,
     thresholds: { channelDelete: 3, channelCreate: 5, roleDelete: 3, roleCreate: 5, roleUpdate: 1, webhookUpdate: 3, webhookDelete: 2, ban: 5, kick: 5, botAdd: 1 },
     action: 'strip',
+    punishments: Object.fromEntries(NukeTypes.map(type => [type, ['ban','kick','botAdd'].includes(type) ? 'ban' : 'strip'])),
     lockdown: true,
   },
   antiRaid: {
@@ -16,19 +20,20 @@ export const SECURITY_DEFAULTS = {
     windowMs: 10000,
     minAccountAgeMs: 24 * 60 * 60 * 1000,
     action: 'timeout',
+    punishment: 'timeout',
     timeoutMs: 10 * 60 * 1000,
     lockdown: true,
     lockdownMs: 10 * 60 * 1000,
   },
   autoMod: {
     enabled: true,
-    spam: { enabled: true, maxMessages: 6, windowMs: 5000 },
-    duplicate: { enabled: true, maxRepeats: 3, windowMs: 10000 },
-    mentions: { enabled: true, max: 6 },
-    caps: { enabled: false, ratio: 0.8, minLength: 12 },
-    invites: { enabled: true },
-    links: { enabled: false },
-    badWords: { enabled: false, words: [] },
+    spam: { enabled: true, maxMessages: 6, windowMs: 5000, punishment: 'timeout' },
+    duplicate: { enabled: true, maxRepeats: 3, windowMs: 10000, punishment: 'timeout' },
+    mentions: { enabled: true, max: 6, punishment: 'timeout' },
+    caps: { enabled: false, ratio: 0.8, minLength: 12, punishment: 'warn' },
+    invites: { enabled: true, punishment: 'delete' },
+    links: { enabled: false, punishment: 'delete' },
+    badWords: { enabled: false, words: [], punishment: 'timeout' },
     action: 'delete',
   },
   escalation: [
@@ -60,7 +65,10 @@ function strikeKey(guildId, userId) { return `security:strikes:${guildId}:${user
 export async function getSecurityConfig(client, guildId) {
   try {
     const stored = await getFromDb(configKey(guildId), null);
-    return deepMerge(clone(SECURITY_DEFAULTS), stored || {});
+    const config = deepMerge(clone(SECURITY_DEFAULTS), stored || {});
+    config.antiNuke.punishments = { ...SECURITY_DEFAULTS.antiNuke.punishments, ...(config.antiNuke.punishments || {}) };
+    for (const type of AutoModTypes) config.autoMod[type].punishment ||= SECURITY_DEFAULTS.autoMod[type].punishment;
+    return config;
   } catch (error) {
     logger.error('Failed to load security config', { guildId, error: error.message });
     return clone(SECURITY_DEFAULTS);
@@ -125,6 +133,18 @@ function capRatio(content) {
   return letters.length ? upper.length / letters.length : 0;
 }
 
+async function executeAutoModAction(message, action, duration, reason) {
+  const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
+  if (action === 'delete') return;
+  if (action === 'timeout' && member?.moderatable) await member.timeout(Math.min(Math.max(duration || 60000, 1000), 2419200000), `AutoMod: ${reason}`).catch(() => {});
+  else if (action === 'kick' && member?.kickable) await member.kick(`AutoMod: ${reason}`).catch(() => {});
+  else if (action === 'ban' && member?.bannable) await member.ban({ reason: `AutoMod: ${reason}` }).catch(() => {});
+  else if (action === 'warn') {
+    const warning = await message.channel.send(`⚠️ <@${message.author.id}> your message was removed: **${reason}**.`).catch(() => null);
+    if (warning) setTimeout(() => warning.delete().catch(() => {}), 5000);
+  }
+}
+
 export async function processAutoMod(message, client) {
   if (!message?.guild || message.author?.bot) return false;
   const config = await getSecurityConfig(client, message.guild.id);
@@ -139,34 +159,28 @@ export async function processAutoMod(message, client) {
   data.repeats.push({ time: now, content: normalizeMessage(message.content) });
 
   const content = message.content || '';
-  const reasons = [];
-  if (a.spam.enabled && data.messages.filter(t => now - t <= a.spam.windowMs).length >= a.spam.maxMessages) reasons.push(`message spam (${a.spam.maxMessages}/${Math.round(a.spam.windowMs / 1000)}s)`);
-  if (a.duplicate.enabled && data.repeats.filter(x => now - x.time <= a.duplicate.windowMs && x.content === normalizeMessage(content)).length >= a.duplicate.maxRepeats) reasons.push(`duplicate spam (${a.duplicate.maxRepeats})`);
+  const violations = [];
+  if (a.spam.enabled && data.messages.filter(t => now - t <= a.spam.windowMs).length >= a.spam.maxMessages) violations.push({ type: 'spam', reason: `message spam (${a.spam.maxMessages}/${Math.round(a.spam.windowMs / 1000)}s)` });
+  if (a.duplicate.enabled && data.repeats.filter(x => now - x.time <= a.duplicate.windowMs && x.content === normalizeMessage(content)).length >= a.duplicate.maxRepeats) violations.push({ type: 'duplicate', reason: `duplicate spam (${a.duplicate.maxRepeats})` });
   const mentions = message.mentions.users.size + message.mentions.roles.size;
-  if (a.mentions.enabled && mentions >= a.mentions.max) reasons.push(`mention spam (${mentions})`);
-  if (a.invites.enabled && /(?:discord\.gg|discord(?:app)?\.com\/invite)\/\S+/i.test(content)) reasons.push('Discord invite');
-  if (a.links.enabled && /https?:\/\/\S+/i.test(content)) reasons.push('link spam');
-  if (a.caps.enabled && content.length >= a.caps.minLength && capRatio(content) >= a.caps.ratio) reasons.push('excessive caps');
-  if (a.badWords.enabled && a.badWords.words?.some(word => word && content.toLowerCase().includes(String(word).toLowerCase()))) reasons.push('blocked word');
-  if (!reasons.length) return false;
+  if (a.mentions.enabled && mentions >= a.mentions.max) violations.push({ type: 'mentions', reason: `mention spam (${mentions})` });
+  if (a.invites.enabled && /(?:discord\.gg|discord(?:app)?\.com\/invite)\/\S+/i.test(content)) violations.push({ type: 'invites', reason: 'Discord invite' });
+  if (a.links.enabled && /https?:\/\/\S+/i.test(content)) violations.push({ type: 'links', reason: 'link spam' });
+  if (a.caps.enabled && content.length >= a.caps.minLength && capRatio(content) >= a.caps.ratio) violations.push({ type: 'caps', reason: 'excessive caps' });
+  if (a.badWords.enabled && a.badWords.words?.some(word => word && content.toLowerCase().includes(String(word).toLowerCase()))) violations.push({ type: 'badWords', reason: 'blocked word' });
+  if (!violations.length) return false;
 
-  const reason = reasons.join(', ');
+  const reason = violations.map(v => v.reason).join(', ');
   const strike = await addStrike(client, message.guild.id, message.author.id, reason);
   const escalation = config.escalation?.find(item => item.strike === strike.count);
-  const action = escalation?.action || a.action || 'delete';
+  const primary = violations[0];
+  const action = escalation?.action || a[primary.type]?.punishment || a.action || 'delete';
   const duration = escalation?.durationMs || 60000;
+
   await message.delete().catch(() => {});
-  const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
-
-  if (action === 'timeout' && member?.moderatable) await member.timeout(Math.min(Math.max(duration, 1000), 2419200000), `AutoMod: ${reason}`).catch(() => {});
-  else if (action === 'kick' && member?.kickable) await member.kick(`AutoMod: ${reason}`).catch(() => {});
-  else if (action === 'ban' && member?.bannable) await member.ban({ reason: `AutoMod: ${reason}` }).catch(() => {});
-  else if (action === 'warn') {
-    const warning = await message.channel.send(`⚠️ <@${message.author.id}> your message was removed: **${reason}**.`).catch(() => null);
-    if (warning) setTimeout(() => warning.delete().catch(() => {}), 5000);
-  }
-
+  await executeAutoModAction(message, action, duration, reason);
   await sendSecurityLog(client, message.guild, { title: 'AutoMod Triggered', description: `AutoMod acted on **${message.author.tag}**.`, fields: [
+    { name: 'Rule', value: primary.type, inline: true },
     { name: 'Reason', value: reason.slice(0, 1024), inline: true },
     { name: 'Strike', value: String(strike.count), inline: true },
     { name: 'Action', value: action, inline: true },
