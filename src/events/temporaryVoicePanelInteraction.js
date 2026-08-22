@@ -1,7 +1,6 @@
 import { Events, MessageFlags } from 'discord.js';
 import { getTemporaryChannelInfo } from '../utils/database.js';
 import {
-    panelCustomId,
     buildUserSelect,
     buildNameModal,
     buildLimitModal,
@@ -30,7 +29,7 @@ export default {
 
             const parts = id.split(':');
             const action = parts[1];
-            const channelId = parts[2];
+            const channelId = action === 'select' || action === 'modal' ? parts[3] : parts[2];
             if (!channelId || !interaction.guild) return;
 
             const channel = interaction.guild.channels.cache.get(channelId)
@@ -63,9 +62,9 @@ export default {
                 }
 
                 if (action === 'privacy') {
-                    const isPrivate = await togglePrivacy(client, channel);
+                    const isPublic = await togglePrivacy(client, channel);
                     await updatePanel(client, channel);
-                    await safeReply(interaction, isPrivate ? '🔒 Room is now private.' : '🔓 Room is now public.');
+                    await safeReply(interaction, isPublic ? '🔓 Room is now public.' : '🔒 Room is now private.');
                     return;
                 }
 
@@ -94,21 +93,20 @@ export default {
                 }
 
                 if (action === 'delete') {
+                    await interaction.reply({ content: '🗑️ Deleting the temporary room...', flags: MessageFlags.Ephemeral });
                     await deleteTemporaryRoom(client, channel);
-                    await safeUpdate(interaction, '🗑️ Temporary room deleted.');
                     return;
                 }
             }
 
-            if (interaction.isUserSelectMenu() && action.startsWith('select')) {
+            if (interaction.isUserSelectMenu() && action === 'select') {
+                const selectedAction = parts[2];
                 const selectedId = interaction.values[0];
                 const selectedMember = await interaction.guild.members.fetch(selectedId).catch(() => null);
                 if (!selectedMember) {
                     await safeReply(interaction, '❌ Member not found.');
                     return;
                 }
-
-                const selectedAction = parts[2];
 
                 if (selectedAction === 'trust') {
                     await trustUser(channel, selectedId);
@@ -140,32 +138,31 @@ export default {
                 return;
             }
 
-            if (interaction.isModalSubmit()) {
-                if (action === 'modal') {
-                    const modalType = parts[2];
-                    if (modalType === 'name') {
-                        const value = interaction.fields.getTextInputValue('name').trim();
-                        if (!value || value.length > 100) {
-                            await safeReply(interaction, '❌ The room name must be between 1 and 100 characters.');
-                            return;
-                        }
-                        await channel.setName(value);
-                        await updatePanel(client, channel);
-                        await safeReply(interaction, '✅ Room name updated.');
+            if (interaction.isModalSubmit() && action === 'modal') {
+                const modalType = parts[2];
+
+                if (modalType === 'name') {
+                    const value = interaction.fields.getTextInputValue('name').trim();
+                    if (!value || value.length > 100) {
+                        await safeReply(interaction, '❌ The room name must be between 1 and 100 characters.');
                         return;
                     }
+                    await channel.setName(value);
+                    await updatePanel(client, channel);
+                    await safeReply(interaction, '✅ Room name updated.');
+                    return;
+                }
 
-                    if (modalType === 'limit') {
-                        const raw = interaction.fields.getTextInputValue('limit').trim();
-                        const limit = Number(raw);
-                        if (!Number.isInteger(limit) || limit < 0 || limit > 99) {
-                            await safeReply(interaction, '❌ Enter a number from **0** to **99**. 0 means unlimited.');
-                            return;
-                        }
-                        await channel.setUserLimit(limit);
-                        await updatePanel(client, channel);
-                        await safeReply(interaction, `✅ User limit set to **${limit === 0 ? 'Unlimited' : limit}**.`);
+                if (modalType === 'limit') {
+                    const raw = interaction.fields.getTextInputValue('limit').trim();
+                    const limit = Number(raw);
+                    if (!Number.isInteger(limit) || limit < 0 || limit > 99) {
+                        await safeReply(interaction, '❌ Enter a number from **0** to **99**. 0 means unlimited.');
+                        return;
                     }
+                    await channel.setUserLimit(limit);
+                    await updatePanel(client, channel);
+                    await safeReply(interaction, `✅ User limit set to **${limit === 0 ? 'Unlimited' : limit}**.`);
                 }
             }
         } catch (error) {
@@ -180,11 +177,4 @@ async function safeReply(interaction, content) {
         return interaction.followUp({ content, flags: MessageFlags.Ephemeral }).catch(() => null);
     }
     return interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => null);
-}
-
-async function safeUpdate(interaction, content) {
-    if (interaction.isButton() && !interaction.replied && !interaction.deferred) {
-        return interaction.update({ content, embeds: [], components: [] }).catch(() => null);
-    }
-    return safeReply(interaction, content);
 }
