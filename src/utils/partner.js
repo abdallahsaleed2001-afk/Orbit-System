@@ -9,7 +9,11 @@ export async function getPartnerData(client, guildId) {
   data.counter = Number(data.counter || 0);
   data.applications = Array.isArray(data.applications) ? data.applications : [];
   data.partners = Array.isArray(data.partners) ? data.partners : [];
-  data.requirements = { minMembers: Math.max(20, Number(data.requirements?.minMembers ?? 20)), requireInvite: data.requirements?.requireInvite !== false, requireActive: data.requirements?.requireActive !== false };
+  const storedMin = Number(data.requirements?.minMembers);
+  // 500 was the old hard-coded default. Migrate that legacy value to the new default of 20.
+  const minMembers = !Number.isFinite(storedMin) || storedMin === 500 ? 20 : Math.max(20, storedMin);
+  data.requirements = { minMembers, requireInvite: data.requirements?.requireInvite !== false, requireActive: data.requirements?.requireActive !== false };
+  if (storedMin === 500) await save(client, guildId, data);
   return data;
 }
 export async function savePartnerData(client, guildId, data) { return save(client, guildId, data); }
@@ -46,11 +50,17 @@ export async function partnerDashboard(interaction) {
   const data = await getPartnerData(interaction.client, interaction.guildId);
   const pending = data.applications.filter(a => a.status === 'pending').length;
   const active = data.partners.filter(p => p.status === 'active').length;
-  const embed = new EmbedBuilder().setColor(0x5865f2).setTitle('🤝 إدارة الشراكات').setDescription('إدارة طلبات الشراكة والشركاء من هنا.').addFields(
-    { name: 'الشراكات الحالية', value: String(active), inline: true }, { name: 'الطلبات المعلقة', value: String(pending), inline: true }, { name: 'إجمالي الطلبات', value: String(data.applications.length), inline: true }, { name: 'الحد الأدنى', value: '20 عضوًا', inline: true }, { name: 'روم الإعلانات', value: data.announcementChannelId ? `<#${data.announcementChannelId}>` : 'غير محدد' },
+  const embed = new EmbedBuilder().setColor(0x5865f2).setTitle('🤝 إدارة الشراكات').setDescription('إدارة طلبات الشراكة والشراكات الحالية من هنا.').addFields(
+    { name: 'الشراكات الحالية', value: String(active), inline: true },
+    { name: 'الطلبات المعلقة', value: String(pending), inline: true },
+    { name: 'إجمالي الطلبات', value: String(data.applications.length), inline: true },
+    { name: 'الحد الأدنى', value: `${data.requirements.minMembers} عضوًا`, inline: true },
   );
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('partner_pending').setLabel('الطلبات').setEmoji('🟡').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('partner_active').setLabel('الشركاء').setEmoji('🤝').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('partner_stats').setLabel('الإحصائيات').setEmoji('📊').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('partner_settings').setLabel('الإعدادات').setEmoji('⚙️').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('partner_pending').setLabel('الطلبات').setEmoji('🟡').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('partner_active').setLabel('الشركاء').setEmoji('🤝').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('partner_stats').setLabel('الإحصائيات').setEmoji('📊').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('partner_settings').setLabel('الإعدادات').setEmoji('⚙️').setStyle(ButtonStyle.Secondary),
   );
   return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 }
@@ -58,7 +68,21 @@ export async function partnerDashboard(interaction) {
 export function applicationEmbed(app) {
   const status = app.status === 'accepted' ? '🟢 مقبول' : app.status === 'rejected' ? '🔴 مرفوض' : '🟡 قيد المراجعة';
   return new EmbedBuilder().setColor(app.status === 'accepted' ? 0x57f287 : app.status === 'rejected' ? 0xed4245 : 0x5865f2).setTitle(`🤝 طلب شراكة #${app.id}`).addFields(
-    { name: 'السيرفر', value: app.serverName, inline: true }, { name: 'عدد الأعضاء', value: String(app.members), inline: true }, { name: 'الحالة', value: status, inline: true }, { name: 'رابط الدعوة', value: app.invite }, { name: 'مقدم الطلب', value: `<@${app.applicantId}>`, inline: true }, { name: 'وصف السيرفر', value: app.description || 'لا يوجد وصف.' }, { name: 'تاريخ الطلب', value: `<t:${Math.floor(new Date(app.createdAt).getTime() / 1000)}:R>` }, ...(app.reviewedBy ? [{ name: 'تمت المراجعة بواسطة', value: `<@${app.reviewedBy}>`, inline: true }] : []),
+    { name: 'السيرفر', value: app.serverName, inline: true },
+    { name: 'عدد الأعضاء', value: String(app.members), inline: true },
+    { name: 'الحالة', value: status, inline: true },
+    { name: 'رابط الدعوة', value: app.invite },
+    { name: 'مقدم الطلب', value: `<@${app.applicantId}>`, inline: true },
+    { name: 'وصف السيرفر', value: app.description || 'لا يوجد وصف.' },
+    { name: 'تاريخ الطلب', value: `<t:${Math.floor(new Date(app.createdAt).getTime() / 1000)}:R>` },
+    ...(app.reviewedBy ? [{ name: 'تمت المراجعة بواسطة', value: `<@${app.reviewedBy}>`, inline: true }] : []),
   );
 }
-export function applicationButtons(app) { if (app.status !== 'pending') return []; return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`partner_accept:${app.id}`).setLabel('قبول').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`partner_reject:${app.id}`).setLabel('رفض').setStyle(ButtonStyle.Danger))]; }
+
+export function applicationButtons(app) {
+  if (app.status !== 'pending') return [];
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`partner_accept:${app.id}`).setLabel('قبول').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`partner_reject:${app.id}`).setLabel('رفض').setStyle(ButtonStyle.Danger),
+  )];
+}
