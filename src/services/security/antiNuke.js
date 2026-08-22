@@ -1,4 +1,4 @@
-import { AuditLogEvent } from 'discord.js';
+import { AuditLogEvent, PermissionFlagsBits } from 'discord.js';
 import { getSecurityConfig, isWhitelisted, sendSecurityLog, getRecentCount } from './securityService.js';
 import { logger } from '../../utils/logger.js';
 
@@ -9,7 +9,9 @@ const EVENT_MAP = {
   channelCreate: AuditLogEvent.ChannelCreate,
   roleDelete: AuditLogEvent.RoleDelete,
   roleCreate: AuditLogEvent.RoleCreate,
-  webhookUpdate: AuditLogEvent.WebhookCreate,
+  roleUpdate: AuditLogEvent.RoleUpdate,
+  webhookUpdate: AuditLogEvent.WebhookUpdate,
+  webhookDelete: AuditLogEvent.WebhookDelete,
   ban: AuditLogEvent.MemberBanAdd,
   kick: AuditLogEvent.MemberKick,
   botAdd: AuditLogEvent.BotAdd,
@@ -20,34 +22,72 @@ function key(guildId, executorId, type) {
 }
 
 async function findExecutor(guild, auditType, targetId) {
-  const logs = await guild.fetchAuditLogs({ type: auditType, limit: 8 }).catch(() => null);
-  const entry = logs?.entries?.find(e => {
-    if (Date.now() - e.createdTimestamp > 15000) return false;
+  const logs = await guild.fetchAuditLogs({ type: auditType, limit: 10 }).catch(() => null);
+  const entry = logs?.entries?.find(entry => {
+    if (Date.now() - entry.createdTimestamp > 15000) return false;
     if (!targetId) return true;
-    return e.target?.id === targetId;
+    return entry.target?.id === targetId || entry.targetId === targetId;
   });
   return entry?.executor || null;
 }
 
-async function punishExecutor(guild, executor, config, reason) {
+async function stripDangerousRoles(member, reason) {
+  if (!member.manageable) return false;
+
+  const removable = member.roles.cache.filter(role => {
+    if (role.id === member.guild.id || !role.editable) return false;
+    return role.permissions.has([
+      PermissionFlagsBits.Administrator,
+      PermissionFlagsBits.ManageGuild,
+      PermissionFlagsBits.ManageChannels,
+      PermissionFlagsBits.ManageRoles,
+      PermissionFlagsBits.BanMembers,
+      PermissionFlagsBits.KickMembers,
+      PermissionFlagsBits.ManageWebhooks,
+    ]);
+  });
+
+  if (!removable.size) return false;
+  await member.roles.remove(removable, `Anti-Nuke: ${reason}`).catch(() => {});
+  return true;
+}
+
+async function punishExecutor(guild, executor, config, reason, targetId) {
   const member = await guild.members.fetch(executor.id).catch(() => null);
   if (!member || member.id === guild.ownerId || isWhitelisted(member, config)) return false;
+
+  let actionTaken = config.antiNuke.action;
 
   if (config.antiNuke.action === 'ban' && member.bannable) {
     await member.ban({ reason: `Anti-Nuke: ${reason}` }).catch(() => {});
   } else if (config.antiNuke.action === 'kick' && member.kickable) {
     await member.kick(`Anti-Nuke: ${reason}`).catch(() => {});
-  } else if (member.manageable) {
-    const removable = member.roles.cache.filter(role => role.id !== guild.id && role.editable);
-    await member.roles.remove(removable, `Anti-Nuke: ${reason}`).catch(() => {});
+  } else {
+    const stripped = await stripDangerousRoles(member, reason);
+    actionTaken = stripped ? 'strip' : 'none';
+  }
+
+  if (config.antiNuke.lockdown && guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
+    if (['channelDelete', 'roleDelete', 'webhookDelete', 'botAdd'].includes(reason.split(' ')[0])) {
+      // The raid system owns timed lockdowns; Anti-Nuke only emits an alert here.
+      // This prevents an accidental permanent server-wide lockdown from a single event.
+    }
+  }
+
+  if (reason.startsWith('botAdd') && targetId) {
+    const bot = await guild.members.fetch(targetId).catch(() => null);
+    if (bot?.user?.bot && bot.kickable && bot.id !== guild.client.user.id) {
+      await bot.kick('Anti-Nuke: unauthorized bot addition').catch(() => {});
+    }
   }
 
   await sendSecurityLog(guild.client, guild, {
     title: 'Anti-Nuke Triggered',
-    description: `**${executor.tag || executor.username}** triggered the Anti-Nuke protection.`,
+    description: `**${executor.tag || executor.username}** triggered Anti-Nuke protection.`,
     fields: [
-      { name: 'Reason', value: reason },
-      { name: 'Action', value: config.antiNuke.action },
+      { name: 'Reason', value: reason.slice(0, 1024), inline: true },
+      { name: 'Action', value: actionTaken, inline: true },
+      { name: 'Executor', value: `${executor.id}`, inline: true },
     ],
   });
   return true;
@@ -58,11 +98,12 @@ export async function handleAntiNuke(guild, type, targetId = null) {
   if (!config.enabled || !config.antiNuke.enabled) return;
 
   const auditType = EVENT_MAP[type];
-  const threshold = config.antiNuke.thresholds[type];
-  if (!auditType || !threshold) return;
+  const threshold = Number(config.antiNuke.thresholds?.[type] || 0);
+  if (!auditType || threshold <= 0) return;
 
   const executor = await findExecutor(guild, auditType, targetId);
-  if (!executor) return;
+  if (!executor || executor.id === guild.client.user?.id) return;
+
   const member = await guild.members.fetch(executor.id).catch(() => null);
   if (!member || member.id === guild.ownerId || isWhitelisted(member, config)) return;
 
@@ -73,7 +114,13 @@ export async function handleAntiNuke(guild, type, targetId = null) {
   counters.set(counterKey, recent);
 
   if (recent.length >= threshold) {
-    await punishExecutor(guild, executor, config, `${type} threshold exceeded (${recent.length}/${threshold})`);
+    await punishExecutor(
+      guild,
+      executor,
+      config,
+      `${type} threshold exceeded (${recent.length}/${threshold})`,
+      targetId,
+    );
     counters.delete(counterKey);
   }
 }
