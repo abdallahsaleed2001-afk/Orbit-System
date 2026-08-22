@@ -6,48 +6,16 @@ const AutoModTypes = ['spam','duplicate','mentions','invites','links','caps','ba
 
 export const SECURITY_DEFAULTS = {
   enabled: true,
-  antiNuke: {
-    enabled: true,
-    windowMs: 10000,
-    thresholds: { channelDelete: 3, channelCreate: 5, roleDelete: 3, roleCreate: 5, roleUpdate: 1, webhookUpdate: 3, webhookDelete: 2, ban: 5, kick: 5, botAdd: 1 },
-    action: 'strip',
-    punishments: Object.fromEntries(NukeTypes.map(type => [type, ['ban','kick','botAdd'].includes(type) ? 'ban' : 'strip'])),
-    lockdown: true,
-  },
-  antiRaid: {
-    enabled: true,
-    joins: 8,
-    windowMs: 10000,
-    minAccountAgeMs: 24 * 60 * 60 * 1000,
-    action: 'timeout',
-    punishment: 'timeout',
-    timeoutMs: 10 * 60 * 1000,
-    lockdown: true,
-    lockdownMs: 10 * 60 * 1000,
-  },
-  autoMod: {
-    enabled: true,
-    spam: { enabled: true, maxMessages: 6, windowMs: 5000, punishment: 'delete' },
-    duplicate: { enabled: true, maxRepeats: 3, windowMs: 10000, punishment: 'delete' },
-    mentions: { enabled: true, max: 6, punishment: 'delete' },
-    caps: { enabled: false, ratio: 0.8, minLength: 12, punishment: 'delete' },
-    invites: { enabled: true, punishment: 'delete' },
-    links: { enabled: false, punishment: 'delete' },
-    badWords: { enabled: false, words: [], punishment: 'delete' },
-    action: 'delete',
-  },
+  antiNuke: { enabled: true, windowMs: 10000, thresholds: { channelDelete: 3, channelCreate: 5, roleDelete: 3, roleCreate: 5, roleUpdate: 1, webhookUpdate: 3, webhookDelete: 2, ban: 5, kick: 5, botAdd: 1 }, action: 'strip', punishments: Object.fromEntries(NukeTypes.map(type => [type, ['ban','kick','botAdd'].includes(type) ? 'ban' : 'strip'])), lockdown: true },
+  antiRaid: { enabled: true, joins: 8, windowMs: 10000, minAccountAgeMs: 24 * 60 * 60 * 1000, action: 'timeout', punishment: 'timeout', timeoutMs: 10 * 60 * 1000, lockdown: true, lockdownMs: 10 * 60 * 1000 },
+  autoMod: { enabled: true, spam: { enabled: true, maxMessages: 6, windowMs: 5000, punishment: 'delete' }, duplicate: { enabled: true, maxRepeats: 3, windowMs: 10000, punishment: 'delete' }, mentions: { enabled: true, max: 6, punishment: 'delete' }, caps: { enabled: false, ratio: 0.8, minLength: 12, punishment: 'delete' }, invites: { enabled: true, punishment: 'delete' }, links: { enabled: false, punishment: 'delete' }, badWords: { enabled: false, words: [], punishment: 'delete' }, action: 'delete' },
   escalation: [
-    { strike: 1, action: 'delete', durationMs: 0 },
-    { strike: 2, action: 'timeout', durationMs: 60 * 1000 },
-    { strike: 3, action: 'timeout', durationMs: 10 * 60 * 1000 },
-    { strike: 4, action: 'timeout', durationMs: 60 * 60 * 1000 },
-    { strike: 5, action: 'kick', durationMs: 0 },
-    { strike: 6, action: 'ban', durationMs: 0 },
+    { strike: 1, action: 'delete', durationMs: 0 }, { strike: 2, action: 'timeout', durationMs: 60 * 1000 }, { strike: 3, action: 'timeout', durationMs: 10 * 60 * 1000 },
+    { strike: 4, action: 'timeout', durationMs: 60 * 60 * 1000 }, { strike: 5, action: 'kick', durationMs: 0 }, { strike: 6, action: 'ban', durationMs: 0 },
   ],
   strikeDecayMs: 24 * 60 * 60 * 1000,
   whitelist: { users: [], roles: [], bots: [] },
-  ignoredChannels: [],
-  logChannelId: null,
+  ignoredChannels: [], logChannelId: null,
 };
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -61,7 +29,6 @@ function deepMerge(base, patch) {
 }
 function configKey(guildId) { return `security:config:${guildId}`; }
 function strikeKey(guildId, userId) { return `security:strikes:${guildId}:${userId}`; }
-
 function normalizeIdList(value) {
   if (Array.isArray(value)) return value.map(String).filter(Boolean);
   if (value instanceof Set) return [...value].map(String).filter(Boolean);
@@ -111,7 +78,9 @@ export async function addStrike(client, guildId, userId, reason = 'AutoMod viola
   await setInDb(strikeKey(guildId, userId), next);
   return next;
 }
-export async function clearStrikes(client, guildId, userId) { await setInDb(strikeKey(guildId, userId), { count: 0, updatedAt: Date.now() }); }
+export async function clearStrikes(client, guildId, userId) {
+  await setInDb(strikeKey(guildId, userId), { count: 0, updatedAt: Date.now(), lastReason: '' });
+}
 
 export function isWhitelisted(member, config) {
   if (!member) return false;
@@ -119,9 +88,13 @@ export function isWhitelisted(member, config) {
   const users = normalizeIdList(whitelist.users);
   const roles = normalizeIdList(whitelist.roles);
   const bots = normalizeIdList(whitelist.bots);
-  if (users.includes(String(member.id))) return true;
-  if (member.roles?.cache?.some(role => roles.includes(String(role.id)))) return true;
-  if (member.user?.bot && bots.includes(String(member.id))) return true;
+  const memberId = String(member.id);
+  if (users.includes(memberId)) return true;
+  const roleIds = new Set();
+  if (member.roles?.cache) for (const role of member.roles.cache.values()) roleIds.add(String(role.id));
+  if (Array.isArray(member._roles)) for (const roleId of member._roles) roleIds.add(String(roleId));
+  if ([...roleIds].some(roleId => roles.includes(roleId))) return true;
+  if (member.user?.bot && bots.includes(memberId)) return true;
   return false;
 }
 
@@ -134,35 +107,21 @@ export async function sendSecurityLog(client, guild, payload) {
     await channel.send({ embeds: [{ title: payload.title || 'Security Event', description: payload.description || 'Security event detected.', color: payload.color || 0xED4245, fields: payload.fields || [], timestamp: new Date().toISOString() }] });
   } catch (error) { logger.warn('Failed to send security log', { guildId: guild.id, error: error.message }); }
 }
-export function getRecentCount(store, key, now, windowMs) {
-  const list = store.get(key) || [];
-  const recent = list.filter(timestamp => now - timestamp <= windowMs);
-  store.set(key, recent);
-  return recent;
-}
 
 const autoModState = new Map();
 function autoModKey(guildId, userId) { return `${guildId}:${userId}`; }
-function autoModData(guildId, userId) {
-  const key = autoModKey(guildId, userId);
-  let data = autoModState.get(key);
-  if (!data) { data = { messages: [], repeats: [] }; autoModState.set(key, data); }
-  return data;
-}
+function autoModData(guildId, userId) { const key = autoModKey(guildId, userId); let data = autoModState.get(key); if (!data) { data = { messages: [], repeats: [] }; autoModState.set(key, data); } return data; }
 function normalizeMessage(content) { return String(content || '').trim().toLowerCase().replace(/\s+/g, ' '); }
-function capRatio(content) {
-  const letters = String(content || '').match(/[A-Za-z]/g) || [];
-  const upper = String(content || '').match(/[A-Z]/g) || [];
-  return letters.length ? upper.length / letters.length : 0;
-}
+function capRatio(content) { const letters = String(content || '').match(/[A-Za-z]/g) || []; const upper = String(content || '').match(/[A-Z]/g) || []; return letters.length ? upper.length / letters.length : 0; }
 
 async function executeAutoModAction(message, action, duration, reason, config) {
   const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
-  if (!member || isWhitelisted(member, config)) return;
-  if (action === 'delete') return;
+  if (!member || isWhitelisted(member, config)) return false;
+  if (action === 'delete') return true;
   if (action === 'timeout' && member.moderatable) await member.timeout(Math.min(Math.max(duration || 60000, 1000), 2419200000), `AutoMod: ${reason}`).catch(() => {});
   else if (action === 'kick' && member.kickable) await member.kick(`AutoMod: ${reason}`).catch(() => {});
   else if (action === 'ban' && member.bannable) await member.ban({ reason: `AutoMod: ${reason}` }).catch(() => {});
+  return true;
 }
 
 export async function processAutoMod(message, client) {
@@ -200,13 +159,15 @@ export async function processAutoMod(message, client) {
   const action = (escalation?.action || a[primary.type]?.punishment || a.action || 'delete') === 'warn' ? 'delete' : (escalation?.action || a[primary.type]?.punishment || a.action || 'delete');
   const duration = escalation?.durationMs || 60000;
 
+  // Re-check immediately before any destructive action so a whitelist change cannot race with enforcement.
+  const latestConfig = await getSecurityConfig(client, message.guild.id);
+  const latestMember = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
+  if (!latestMember || isWhitelisted(latestMember, latestConfig)) return false;
+
   await message.delete().catch(() => {});
-  await executeAutoModAction(message, action, duration, reason, config);
+  await executeAutoModAction(message, action, duration, reason, latestConfig);
   await sendSecurityLog(client, message.guild, { title: 'AutoMod Triggered', description: `AutoMod acted on **${message.author.tag}**.`, fields: [
-    { name: 'Rule', value: primary.type, inline: true },
-    { name: 'Reason', value: reason.slice(0, 1024), inline: true },
-    { name: 'Strike', value: String(strike.count), inline: true },
-    { name: 'Action', value: action, inline: true },
+    { name: 'Rule', value: primary.type, inline: true }, { name: 'Reason', value: reason.slice(0, 1024), inline: true }, { name: 'Strike', value: String(strike.count), inline: true }, { name: 'Action', value: action, inline: true },
   ] });
   return true;
 }
