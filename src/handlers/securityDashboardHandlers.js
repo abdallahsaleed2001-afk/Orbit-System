@@ -22,9 +22,30 @@ function embed(title, description, color = 0x5865f2, guild) {
   return new EmbedBuilder().setAuthor({ name: 'Infinity Security Center', iconURL: guild.iconURL({ size: 128 }) || undefined }).setTitle(title).setDescription(description).setColor(color).setFooter({ text: 'Infinity System • Changes save automatically' }).setTimestamp();
 }
 
+export async function buildSecurityDashboard(client, guild, userId) {
+  const config = await getSecurityConfig(client, guild.id);
+  return {
+    embeds: [embed('🛡️ Server Protection', `**${guild.name}**\n\nChoose a security system to configure.\n\n🛡️ Anti-Nuke — ${config.antiNuke.enabled ? '🟢' : '🔴'}\n🚨 Anti-Raid — ${config.antiRaid.enabled ? '🟢' : '🔴'}\n🤖 AutoMod — ${config.autoMod.enabled ? '🟢' : '🔴'}\n⚖️ Punishments — ${(config.escalation || []).length} escalation levels\n🏆 Strikes & Warnings — management enabled\n👤 Whitelist — ${(config.whitelist.users.length + config.whitelist.roles.length + config.whitelist.bots.length)} entries\n📋 Logs — ${config.logChannelId ? `<#${config.logChannelId}>` : 'not configured'}`, 0x57f287, guild)],
+    components: [
+      row(
+        B(`security_panel_nuke2:${userId}`, '🛡️ Anti-Nuke', ButtonStyle.Danger),
+        B(`security_panel_raid2:${userId}`, '🚨 Anti-Raid', ButtonStyle.Primary),
+        B(`security_panel_automod2:${userId}`, '🤖 AutoMod', ButtonStyle.Primary),
+        B(`security_panel_punishments2:${userId}`, '⚖️ Punishments', ButtonStyle.Primary),
+      ),
+      row(
+        B(`security_panel_strikes2:${userId}`, '🏆 Strikes', ButtonStyle.Danger),
+        B(`security_panel_whitelist2:${userId}`, '👤 Whitelist'),
+        B(`security_panel_logs2:${userId}`, '📋 Logs'),
+        B(`security_panel_settings2:${userId}`, '⚙️ Settings'),
+        B(`security_refresh:${userId}`, '🔄 Refresh', ButtonStyle.Success),
+      ),
+    ],
+  };
+}
+
 async function dashboard(i, c) {
-  const config = await getSecurityConfig(c, i.guildId);
-  return i.update({ embeds: [embed('🛡️ Server Protection', `**${i.guild.name}**\n\nChoose a security system to configure.\n\n🛡️ Anti-Nuke — ${config.antiNuke.enabled ? '🟢' : '🔴'}\n🚨 Anti-Raid — ${config.antiRaid.enabled ? '🟢' : '🔴'}\n🤖 AutoMod — ${config.autoMod.enabled ? '🟢' : '🔴'}\n⚖️ Punishments — ${config.escalation.length} escalation levels\n🏆 Strikes & Warnings — management enabled\n👤 Whitelist — ${(config.whitelist.users.length + config.whitelist.roles.length + config.whitelist.bots.length)} entries\n📋 Logs — ${config.logChannelId ? `<#${config.logChannelId}>` : 'not configured'}`, 0x57f287, i.guild)], components: [row(B(`security_panel_nuke2:${i.user.id}`, '🛡️ Anti-Nuke', ButtonStyle.Danger), B(`security_panel_raid2:${i.user.id}`, '🚨 Anti-Raid', ButtonStyle.Primary), B(`security_panel_automod2:${i.user.id}`, '🤖 AutoMod', ButtonStyle.Primary), B(`security_panel_punishments2:${i.user.id}`, '⚖️ Punishments', ButtonStyle.Primary)), row(B(`security_panel_strikes2:${i.user.id}`, '🏆 Strikes', ButtonStyle.Danger), B(`security_panel_whitelist2:${i.user.id}`, '👤 Whitelist'), B(`security_panel_logs2:${i.user.id}`, '📋 Logs'), B(`security_panel_settings2:${i.user.id}`, '⚙️ Settings'), B(`security_refresh:${i.user.id}`, '🔄 Refresh', ButtonStyle.Success)))] });
+  return i.update(await buildSecurityDashboard(c, i.guild, i.user.id));
 }
 
 async function nuke(i, c) {
