@@ -27,17 +27,17 @@ export const SECURITY_DEFAULTS = {
   },
   autoMod: {
     enabled: true,
-    spam: { enabled: true, maxMessages: 6, windowMs: 5000, punishment: 'timeout' },
-    duplicate: { enabled: true, maxRepeats: 3, windowMs: 10000, punishment: 'timeout' },
-    mentions: { enabled: true, max: 6, punishment: 'timeout' },
-    caps: { enabled: false, ratio: 0.8, minLength: 12, punishment: 'warn' },
+    spam: { enabled: true, maxMessages: 6, windowMs: 5000, punishment: 'delete' },
+    duplicate: { enabled: true, maxRepeats: 3, windowMs: 10000, punishment: 'delete' },
+    mentions: { enabled: true, max: 6, punishment: 'delete' },
+    caps: { enabled: false, ratio: 0.8, minLength: 12, punishment: 'delete' },
     invites: { enabled: true, punishment: 'delete' },
     links: { enabled: false, punishment: 'delete' },
-    badWords: { enabled: false, words: [], punishment: 'timeout' },
+    badWords: { enabled: false, words: [], punishment: 'delete' },
     action: 'delete',
   },
   escalation: [
-    { strike: 1, action: 'warn', durationMs: 0 },
+    { strike: 1, action: 'delete', durationMs: 0 },
     { strike: 2, action: 'timeout', durationMs: 60 * 1000 },
     { strike: 3, action: 'timeout', durationMs: 10 * 60 * 1000 },
     { strike: 4, action: 'timeout', durationMs: 60 * 60 * 1000 },
@@ -68,6 +68,7 @@ export async function getSecurityConfig(client, guildId) {
     const config = deepMerge(clone(SECURITY_DEFAULTS), stored || {});
     config.antiNuke.punishments = { ...SECURITY_DEFAULTS.antiNuke.punishments, ...(config.antiNuke.punishments || {}) };
     for (const type of AutoModTypes) config.autoMod[type].punishment ||= SECURITY_DEFAULTS.autoMod[type].punishment;
+    config.escalation = (config.escalation || []).map(level => ({ ...level, action: level.action === 'warn' ? 'delete' : level.action }));
     return config;
   } catch (error) {
     logger.error('Failed to load security config', { guildId, error: error.message });
@@ -77,6 +78,7 @@ export async function getSecurityConfig(client, guildId) {
 export async function updateSecurityConfig(client, guildId, patch) {
   const current = await getSecurityConfig(client, guildId);
   const updated = deepMerge(current, patch);
+  updated.escalation = (updated.escalation || []).map(level => ({ ...level, action: level.action === 'warn' ? 'delete' : level.action }));
   await setInDb(configKey(guildId), updated);
   return updated;
 }
@@ -139,10 +141,6 @@ async function executeAutoModAction(message, action, duration, reason) {
   if (action === 'timeout' && member?.moderatable) await member.timeout(Math.min(Math.max(duration || 60000, 1000), 2419200000), `AutoMod: ${reason}`).catch(() => {});
   else if (action === 'kick' && member?.kickable) await member.kick(`AutoMod: ${reason}`).catch(() => {});
   else if (action === 'ban' && member?.bannable) await member.ban({ reason: `AutoMod: ${reason}` }).catch(() => {});
-  else if (action === 'warn') {
-    const warning = await message.channel.send(`⚠️ <@${message.author.id}> your message was removed: **${reason}**.`).catch(() => null);
-    if (warning) setTimeout(() => warning.delete().catch(() => {}), 5000);
-  }
 }
 
 export async function processAutoMod(message, client) {
@@ -174,7 +172,7 @@ export async function processAutoMod(message, client) {
   const strike = await addStrike(client, message.guild.id, message.author.id, reason);
   const escalation = config.escalation?.find(item => item.strike === strike.count);
   const primary = violations[0];
-  const action = escalation?.action || a[primary.type]?.punishment || a.action || 'delete';
+  const action = (escalation?.action || a[primary.type]?.punishment || a.action || 'delete') === 'warn' ? 'delete' : (escalation?.action || a[primary.type]?.punishment || a.action || 'delete');
   const duration = escalation?.durationMs || 60000;
 
   await message.delete().catch(() => {});
