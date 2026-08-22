@@ -73,6 +73,10 @@ function parseKey(i) { return i.customId.split(':').at(-2); }
 
 export default [
   {
+    name: 'security_panel_automod',
+    execute: async (i, client) => ok(i) ? autoModPage(i, client) : deny(i),
+  },
+  {
     name: 'security_panel_automod2',
     execute: async (i, client) => ok(i) ? autoModPage(i, client) : deny(i),
   },
@@ -110,7 +114,7 @@ export default [
       const key = parseKey(i);
       const x = await getSecurityConfig(client, i.guildId);
       const values = RULES[key].values;
-      await updateSecurityConfig(client, i.guildId, { autoMod: { [key]: { punishment: cycle(x.autoMod[key].punishment, values) } } });
+      await updateSecurityConfig(client, i.guildId, { autoMod: { [key]: { punishment: cycle(x.autoMod[key].punishment, values) } });
       return rulePage(i, client, key);
     },
   },
