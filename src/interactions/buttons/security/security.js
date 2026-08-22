@@ -3,12 +3,12 @@ import { securityDashboardButtonHandlers } from '../../../handlers/securityDashb
 import securityDashboardRuleHandlers from '../../../handlers/securityDashboardRuleHandlers.js';
 import securityAutoModDashboard from '../../../handlers/securityAutoModDashboard.js';
 
-// Load the core/dashboard handlers first, then AutoMod, and finally the
-// compatibility overrides so Back/Refresh always return to the exact
-// original /security dashboard UI.
+// Compatibility handlers must be registered first so legacy message buttons
+// resolve to the intended dashboard/AutoMod behavior before duplicate IDs from
+// the newer dashboard handlers are encountered.
 export default [
+  ...securityDashboardOverrides,
   ...securityDashboardButtonHandlers,
   ...securityDashboardRuleHandlers,
   ...securityAutoModDashboard,
-  ...securityDashboardOverrides,
 ];
