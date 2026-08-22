@@ -1,6 +1,5 @@
 import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
-import { getJoinToCreateConfig, saveJoinToCreateConfig, getTemporaryChannelInfo } from '../../utils/database.js';
-import { getTempVoiceConfig } from '../../services/tempVoiceService.js';
+import { getJoinToCreateConfig, saveJoinToCreateConfig, getTemporaryChannelInfo, unregisterTemporaryChannel } from '../../utils/database.js';
 
 async function getOwnedRoom(interaction, client) {
   const channel = interaction.member?.voice?.channel;
@@ -45,6 +44,7 @@ const handlers = {
   tempvoice_transfer: async i => i.showModal(modal('tempvoice_transfer_modal', 'Transfer Ownership', 'New owner User ID', '123456789012345678')),
   tempvoice_delete: async (i, c) => {
     const room = await getOwnedRoom(i, c); if (room.error) return i.reply({ content: room.error, ephemeral: true });
+    await unregisterTemporaryChannel(c, i.guildId, room.channel.id);
     await room.channel.delete('TempVoice owner deleted room').catch(() => {});
     return i.reply({ content: '🗑️ Room deleted.', ephemeral: true });
   },
