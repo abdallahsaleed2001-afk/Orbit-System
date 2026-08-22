@@ -60,7 +60,7 @@ async function review(interaction, client, id, status) {
   if (status === 'accepted' && data.announcementChannelId) {
     const announcementChannel = interaction.guild.channels.cache.get(data.announcementChannelId);
     if (announcementChannel?.isTextBased()) {
-      const text = `🤝 **${app.serverName}**\n\n${app.description}\n\n${app.invite}\n\n@everyone @here`;
+      const text = `🤝 **شراكة جديدة**\n\n**${app.serverName}**\n\n${app.description}\n\n${app.invite}\n\n@everyone @here`;
       await announcementChannel.send({ content: text, allowedMentions: { parse: ['everyone'] } });
     }
   }
