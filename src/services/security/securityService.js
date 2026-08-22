@@ -162,3 +162,8 @@ export async function processAutoMod(message, client) {
   ] });
   return true;
 }
+
+export function getRecentCount(store, mapKey, now, windowMs) {
+  const existing = store.get(mapKey) || [];
+  return existing.filter(timestamp => now - timestamp <= windowMs);
+}
