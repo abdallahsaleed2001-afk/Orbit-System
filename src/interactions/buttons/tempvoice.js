@@ -34,6 +34,7 @@ const handlers = {
     const hidden = !info.hidden;
     info.hidden = hidden;
     await room.channel.permissionOverwrites.edit(i.guildId, { ViewChannel: !hidden });
+    await room.channel.permissionOverwrites.edit(i.user.id, { ViewChannel: true, Connect: true, Speak: true, MoveMembers: true, ManageChannels: true });
     await saveJoinToCreateConfig(c, i.guildId, config);
     return i.reply({ content: hidden ? '👁️ Room hidden.' : '👁️ Room visible.', ephemeral: true });
   },
