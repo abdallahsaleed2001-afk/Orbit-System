@@ -20,7 +20,7 @@ export function panelCustomId(action, channelId) {
 }
 
 export function buildTemporaryVoicePanel(channel, ownerId) {
-    const locked = !channel.permissionsFor(channel.guild.roles.everyone)?.has(PermissionFlagsBits.Connect);
+    const isPublic = channel.permissionsFor(channel.guild.roles.everyone)?.has(PermissionFlagsBits.Connect);
 
     const embed = new EmbedBuilder()
         .setColor('#5865F2')
@@ -29,7 +29,7 @@ export function buildTemporaryVoicePanel(channel, ownerId) {
             `Manage **${channel.name}** from this panel.\n\n` +
             `👑 **Owner:** <@${ownerId}>\n` +
             `👥 **Users:** ${channel.members.size}${channel.userLimit ? `/${channel.userLimit}` : ''}\n` +
-            `🔐 **Privacy:** ${locked ? 'Private' : 'Public'}\n\n` +
+            `🔐 **Privacy:** ${isPublic ? 'Public' : 'Private'}\n\n` +
             'Only the current room owner can use these controls.'
         )
         .setFooter({ text: 'The panel is public • Controls affect this voice room only' })
@@ -185,10 +185,8 @@ export async function transferOwnership(client, channel, newOwnerId) {
     await saveConfig(client, guildId, config);
 
     const newOwner = await channel.guild.members.fetch(newOwnerId);
-    const sourceTrigger = info.triggerChannelId ? channel.guild.channels.cache.get(info.triggerChannelId) : null;
-    const sourceName = sourceTrigger?.name || 'Room';
     const safeName = `${newOwner.displayName || newOwner.user.username}'s Room`.slice(0, 100);
-    await channel.setName(safeName || sourceName);
+    await channel.setName(safeName || 'Voice Room');
 
     return newOwner;
 }
