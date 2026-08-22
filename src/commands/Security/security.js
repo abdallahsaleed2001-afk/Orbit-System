@@ -14,21 +14,26 @@ const PANEL_META = {
   raid: ['🚨 Anti-Raid', 'Detects rapid joins and suspicious new accounts.'],
   automod: ['🤖 AutoMod', 'Stops spam, duplicates, mentions, invites, links and other abuse.'],
   punishments: ['⚖️ Punishments', 'Every protection rule can have its own punishment.'],
+  strikes: ['🏆 Strike Board', 'See members with the most active security strikes and manage them.'],
   whitelist: ['👤 Whitelist', 'Trusted users, roles and bots bypass security actions.'],
   logs: ['📋 Logs', 'Choose where security incidents are reported.'],
   settings: ['⚙️ Settings', 'Global protection and security behavior.'],
 };
+
 const MAIN_BUTTONS = [
   ['security_panel_nuke', '🛡️ Anti-Nuke', ButtonStyle.Danger],
   ['security_panel_raid', '🚨 Anti-Raid', ButtonStyle.Primary],
   ['security_panel_automod', '🤖 AutoMod', ButtonStyle.Primary],
   ['security_panel_punishments', '⚖️ Punishments', ButtonStyle.Primary],
+  ['security_panel_strikes', '🏆 Strikes', ButtonStyle.Danger],
   ['security_panel_whitelist', '👤 Whitelist', ButtonStyle.Secondary],
   ['security_panel_logs', '📋 Logs', ButtonStyle.Secondary],
   ['security_panel_settings', '⚙️ Settings', ButtonStyle.Secondary],
 ];
+
 const NUKE_LABELS = { channelDelete: 'Channel Del', channelCreate: 'Channel Add', roleDelete: 'Role Del', roleCreate: 'Role Add', roleUpdate: 'Role Edit', webhookUpdate: 'Webhook Edit', webhookDelete: 'Webhook Del', ban: 'Ban', kick: 'Kick', botAdd: 'Bot Add' };
 const AUTOMOD_LABELS = { spam: 'Spam', duplicate: 'Duplicate', mentions: 'Mentions', invites: 'Invites', links: 'Links', caps: 'Caps', badWords: 'Bad Words' };
+
 function status(enabled) { return enabled ? '🟢 **ACTIVE**' : '🔴 **OFF**'; }
 function boolLabel(value) { return value ? '🟢 ON' : '🔴 OFF'; }
 function hours(ms) { return Math.max(0, Math.round(Number(ms || 0) / 3600000)); }
@@ -49,7 +54,7 @@ export function buildSecurityDashboard(config, guild) {
     .setThumbnail(guild.iconURL({ size: 256 }) || null)
     .addFields(
       { name: '━━ Protection ━━', value: [`🛡️ Anti-Nuke  ${status(config.antiNuke?.enabled)}`, `🚨 Anti-Raid  ${status(config.antiRaid?.enabled)}`, `🤖 AutoMod    ${status(config.autoMod?.enabled)}`, `🔒 Global     ${status(config.enabled)}`].join('\n'), inline: true },
-      { name: '━━ Statistics ━━', value: [`⚡ **${config.escalation?.length || 0}** escalation levels`, `👤 **${whitelistCount}** whitelist entries`, `⏱️ **${hours(config.strikeDecayMs)}h** strike decay`, `📋 Logs: ${logValue}`].join('\n'), inline: true },
+      { name: '━━ Statistics ━━', value: [`⚡ **${config.escalation?.length || 0}** escalation levels`, `🏆 **Strike management** enabled`, `👤 **${whitelistCount}** whitelist entries`, `📋 Logs: ${logValue}`].join('\n'), inline: true },
       { name: '━━ Current Mode ━━', value: config.enabled ? '🟢 **PROTECTED** — security systems are actively monitoring this server.' : '🔴 **DISABLED** — global security protection is currently off.' },
     )
     .setFooter({ text: 'Infinity System • Security Center • Changes save automatically' })
@@ -76,7 +81,6 @@ export function buildSecurityPanel(config, guild, panel) {
     `Roles: delete \`${config.antiNuke?.thresholds?.roleDelete ?? 3}\` • create \`${config.antiNuke?.thresholds?.roleCreate ?? 5}\` • edit \`${config.antiNuke?.thresholds?.roleUpdate ?? 1}\``,
     `Webhooks: edit \`${config.antiNuke?.thresholds?.webhookUpdate ?? 3}\` • delete \`${config.antiNuke?.thresholds?.webhookDelete ?? 2}\``,
     `Ban \`${config.antiNuke?.thresholds?.ban ?? 5}\` • Kick \`${config.antiNuke?.thresholds?.kick ?? 5}\` • Bot add \`${config.antiNuke?.thresholds?.botAdd ?? 1}\``,
-    '', 'Use **Punishments** to configure a different punishment for every operation.'
   ];
   else if (panel === 'raid') data = [
     `**Status:** ${status(config.antiRaid?.enabled)}`,
@@ -94,17 +98,42 @@ export function buildSecurityPanel(config, guild, panel) {
     `**Invites:** ${boolLabel(config.autoMod?.invites?.enabled)} • **${config.autoMod?.invites?.punishment || 'delete'}**`,
     `**Links:** ${boolLabel(config.autoMod?.links?.enabled)} • **${config.autoMod?.links?.punishment || 'delete'}** • **Caps:** ${boolLabel(config.autoMod?.caps?.enabled)} • **${config.autoMod?.caps?.punishment || 'warn'}**`,
     `**Bad words:** ${config.autoMod?.badWords?.words?.length || 0} words • **${config.autoMod?.badWords?.punishment || 'timeout'}**`,
-    '', 'Escalation can override the rule punishment when a member reaches a configured strike level.'
   ];
   else if (panel === 'punishments') {
     const nuke = Object.entries(NUKE_LABELS).map(([key, label]) => `${label}: **${config.antiNuke?.punishments?.[key] || config.antiNuke?.action || 'strip'}**`);
     const automod = Object.entries(AUTOMOD_LABELS).map(([key, label]) => `${label}: **${config.autoMod?.[key]?.punishment || 'delete'}**`);
-    data = ['**Per-rule punishments**', '', '**Anti-Nuke**', ...nuke, '', `**Anti-Raid:** **${config.antiRaid?.punishment || config.antiRaid?.action || 'timeout'}**`, '', '**AutoMod**', ...automod, '', '**Escalation**', ...(config.escalation || []).slice(0, 10).map(e => `Strike ${e.strike}: **${e.action}**${e.durationMs ? ` • ${Math.round(e.durationMs / 60000)}m` : ''}`), '', `Strike decay: **${hours(config.strikeDecayMs)}h**`];
-  } else if (panel === 'whitelist') data = [`**Users:** \`${config.whitelist?.users?.length || 0}\``, `**Roles:** \`${config.whitelist?.roles?.length || 0}\``, `**Bots:** \`${config.whitelist?.bots?.length || 0}\``, '', 'Whitelisted accounts bypass Anti-Nuke and AutoMod enforcement where applicable.'];
+    data = ['**Per-rule punishments**', '', '**Anti-Nuke**', ...nuke, '', `**Anti-Raid:** **${config.antiRaid?.punishment || 'timeout'}**`, '', '**AutoMod**', ...automod, '', '**Escalation**', ...(config.escalation || []).slice(0, 10).map(e => `Strike ${e.strike}: **${e.action}**${e.durationMs ? ` • ${Math.round(e.durationMs / 60000)}m` : ''}`), '', `Strike decay: **${hours(config.strikeDecayMs)}h**`];
+  } else if (panel === 'strikes') data = [
+    '🏆 **Top active security strikes**',
+    '',
+    'This board shows members with the highest active Strike count. Expired strikes are ignored automatically.',
+    '',
+    'Use the buttons below to reset a member completely or refresh the board.',
+  ];
+  else if (panel === 'whitelist') data = [`**Users:** \`${config.whitelist?.users?.length || 0}\``, `**Roles:** \`${config.whitelist?.roles?.length || 0}\``, `**Bots:** \`${config.whitelist?.bots?.length || 0}\``, '', 'Whitelisted accounts bypass Anti-Nuke and AutoMod enforcement where applicable.'];
   else if (panel === 'logs') data = [`**Log channel:** ${config.logChannelId ? `<#${config.logChannelId}>` : '`Not configured`'}`, `**Ignored channels:** \`${config.ignoredChannels?.length || 0}\``, '', 'Security incidents include the executor/member, reason and action taken.'];
   else data = [`**Global protection:** ${status(config.enabled)}`, `**Anti-Nuke:** ${status(config.antiNuke?.enabled)}`, `**Anti-Raid:** ${status(config.antiRaid?.enabled)}`, `**AutoMod:** ${status(config.autoMod?.enabled)}`, '', 'Use the controls below to change protection without leaving this message.'];
 
-  return new EmbedBuilder().setAuthor({ name: 'Infinity Security Center', iconURL: guild.iconURL({ size: 128 }) || undefined }).setTitle(title).setDescription(`${description}\n\n${data.join('\n')}`).setColor(panel === 'nuke' ? 0xed4245 : panel === 'raid' ? 0xf47b67 : panel === 'automod' ? 0x5865f2 : 0x57f287).setFooter({ text: 'Infinity System • Click a control below • Changes save automatically' }).setTimestamp();
+  return new EmbedBuilder()
+    .setAuthor({ name: 'Infinity Security Center', iconURL: guild.iconURL({ size: 128 }) || undefined })
+    .setTitle(title)
+    .setDescription(`${description}\n\n${data.join('\n')}`)
+    .setColor(panel === 'nuke' ? 0xed4245 : panel === 'raid' ? 0xf47b67 : panel === 'automod' ? 0x5865f2 : panel === 'strikes' ? 0xfee75c : 0x57f287)
+    .setFooter({ text: 'Infinity System • Click a control below • Changes save automatically' })
+    .setTimestamp();
+}
+
+export function buildStrikeBoardEmbed(guild, entries) {
+  const lines = entries.length
+    ? entries.map((entry, index) => `${index + 1}. <@${entry.userId}> — **${entry.count} strike${entry.count === 1 ? '' : 's'}**${entry.lastReason ? ` • ${String(entry.lastReason).slice(0, 80)}` : ''}`).join('\n')
+    : '✅ No active strikes found.';
+  return new EmbedBuilder()
+    .setAuthor({ name: 'Infinity Security Center', iconURL: guild.iconURL({ size: 128 }) || undefined })
+    .setTitle('🏆 Strike Leaderboard')
+    .setDescription(`**${guild.name}**\n\n${lines}`)
+    .setColor(0xfee75c)
+    .setFooter({ text: 'Resetting a strike only changes the security strike counter; security logs remain intact.' })
+    .setTimestamp();
 }
 
 export function buildSecurityPanelControls(userId, panel, config) {
@@ -128,6 +157,8 @@ export function buildSecurityPanelControls(userId, panel, config) {
     const autoKeys = Object.keys(AUTOMOD_LABELS);
     for (let i = 0; i < autoKeys.length; i += 5) rows.push(new ActionRowBuilder().addComponents(...autoKeys.slice(i, i + 5).map(k => button(id(`security_pun_auto_${k}`), `${AUTOMOD_LABELS[k]}: ${config.autoMod[k].punishment}`, ButtonStyle.Primary))));
     for (let i = 0; i < Math.min(10, (config.escalation || []).length); i += 5) rows.push(new ActionRowBuilder().addComponents(...config.escalation.slice(i, i + 5).map(level => button(id(`security_pun_level_${level.strike}`), `#${level.strike}: ${level.action}`, ButtonStyle.Secondary))));
+  } else if (panel === 'strikes') {
+    rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_strikes_refresh'), '🔄 Refresh', ButtonStyle.Success)));
   } else if (panel === 'whitelist') rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_whitelist_users'), '👤 Manage Users', ButtonStyle.Primary), button(id('security_whitelist_roles'), '🎭 Manage Roles', ButtonStyle.Primary), button(id('security_whitelist_bots'), '🤖 Manage Bots', ButtonStyle.Primary)));
   else if (panel === 'logs') rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_logs_channel'), '📋 Set Log Channel', ButtonStyle.Primary), button(id('security_logs_ignored'), '🚫 Ignored Channels')));
   else rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_settings_toggle'), config.enabled ? '🟢 Disable Protection' : '🔴 Enable Protection', config.enabled ? ButtonStyle.Danger : ButtonStyle.Success), button(id('security_settings_refresh'), '🔄 Refresh')));
