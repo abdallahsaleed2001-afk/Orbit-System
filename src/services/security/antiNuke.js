@@ -1,5 +1,5 @@
 import { AuditLogEvent, PermissionFlagsBits } from 'discord.js';
-import { getSecurityConfig, isWhitelisted, sendSecurityLog, getRecentCount } from './securityService.js';
+import { getSecurityConfig, isWhitelisted, sendSecurityLog } from './securityService.js';
 import { logger } from '../../utils/logger.js';
 
 const counters = new Map();
@@ -16,6 +16,10 @@ const EVENT_MAP = {
   botAdd: AuditLogEvent.BotAdd,
 };
 function key(guildId, executorId, type) { return `${guildId}:${executorId}:${type}`; }
+function getRecentCount(store, mapKey, now, windowMs) {
+  const existing = store.get(mapKey) || [];
+  return existing.filter(timestamp => now - timestamp <= windowMs);
+}
 
 async function findExecutor(guild, auditType, targetId = null) {
   const types = Array.isArray(auditType) ? auditType : [auditType];
@@ -64,12 +68,6 @@ async function punishExecutor(guild, executor, config, type, reason, targetId) {
   else if (action === 'strip') {
     const stripped = await stripDangerousRoles(member, reason);
     actionTaken = stripped ? 'strip' : 'none';
-  } else if (action === 'warn') {
-    const channel = guild.systemChannel;
-    if (channel?.isTextBased()) {
-      const warning = await channel.send(`⚠️ <@${executor.id}> Anti-Nuke triggered: **${reason}**.`).catch(() => null);
-      if (warning) setTimeout(() => warning.delete().catch(() => {}), 5000);
-    }
   }
 
   if (type === 'botAdd' && targetId) {
