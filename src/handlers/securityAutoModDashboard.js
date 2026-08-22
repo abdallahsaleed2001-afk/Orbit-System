@@ -114,7 +114,7 @@ export default [
       const key = parseKey(i);
       const x = await getSecurityConfig(client, i.guildId);
       const values = RULES[key].values;
-      await updateSecurityConfig(client, i.guildId, { autoMod: { [key]: { punishment: cycle(x.autoMod[key].punishment, values) } });
+      await updateSecurityConfig(client, i.guildId, { autoMod: { [key]: { punishment: cycle(x.autoMod[key].punishment, values) } } });
       return rulePage(i, client, key);
     },
   },
