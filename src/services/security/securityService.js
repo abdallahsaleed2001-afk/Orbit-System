@@ -11,7 +11,9 @@ export const SECURITY_DEFAULTS = {
       channelCreate: 5,
       roleDelete: 3,
       roleCreate: 5,
+      roleUpdate: 3,
       webhookUpdate: 3,
+      webhookDelete: 3,
       ban: 5,
       kick: 5,
       botAdd: 2,
@@ -48,6 +50,7 @@ export const SECURITY_DEFAULTS = {
     { strike: 5, action: 'kick', durationMs: 0 },
     { strike: 6, action: 'ban', durationMs: 0 },
   ],
+  strikeDecayMs: 24 * 60 * 60 * 1000,
   whitelist: { users: [], roles: [], bots: [] },
   ignoredChannels: [],
   logChannelId: null,
@@ -101,8 +104,15 @@ export async function getStrikes(client, guildId, userId) {
 }
 
 export async function addStrike(client, guildId, userId, reason = 'AutoMod violation') {
+  const config = await getSecurityConfig(client, guildId);
   const current = await getStrikes(client, guildId, userId);
-  const next = { count: Number(current.count || 0) + 1, updatedAt: Date.now(), lastReason: reason };
+  const now = Date.now();
+  const expired = current.updatedAt && now - current.updatedAt > Number(config.strikeDecayMs || 0);
+  const next = {
+    count: (expired ? 0 : Number(current.count || 0)) + 1,
+    updatedAt: now,
+    lastReason: reason,
+  };
   await setInDb(strikeKey(guildId, userId), next);
   return next;
 }
@@ -113,9 +123,9 @@ export async function clearStrikes(client, guildId, userId) {
 
 export function isWhitelisted(member, config) {
   if (!member) return false;
-  if (config.whitelist.users.includes(member.id)) return true;
-  if (member.roles?.cache?.some(role => config.whitelist.roles.includes(role.id))) return true;
-  if (member.user?.bot && config.whitelist.bots.includes(member.id)) return true;
+  if (config.whitelist?.users?.includes(member.id)) return true;
+  if (member.roles?.cache?.some(role => config.whitelist?.roles?.includes(role.id))) return true;
+  if (member.user?.bot && config.whitelist?.bots?.includes(member.id)) return true;
   return false;
 }
 
