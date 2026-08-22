@@ -10,7 +10,7 @@ const EVENT_MAP = {
   roleDelete: AuditLogEvent.RoleDelete,
   roleCreate: AuditLogEvent.RoleCreate,
   roleUpdate: AuditLogEvent.RoleUpdate,
-  webhookUpdate: AuditLogEvent.WebhookUpdate,
+  webhookUpdate: [AuditLogEvent.WebhookCreate, AuditLogEvent.WebhookUpdate, AuditLogEvent.WebhookDelete],
   webhookDelete: AuditLogEvent.WebhookDelete,
   ban: AuditLogEvent.MemberBanAdd,
   kick: AuditLogEvent.MemberKick,
@@ -22,13 +22,22 @@ function key(guildId, executorId, type) {
 }
 
 async function findExecutor(guild, auditType, targetId = null) {
-  const logs = await guild.fetchAuditLogs({ type: auditType, limit: 10 }).catch(() => null);
-  const entry = logs?.entries?.find(entry => {
-    if (Date.now() - entry.createdTimestamp > 15000) return false;
-    if (!targetId) return true;
-    return entry.target?.id === targetId || entry.targetId === targetId;
-  });
-  return entry?.executor || null;
+  const types = Array.isArray(auditType) ? auditType : [auditType];
+  const entries = [];
+
+  for (const type of types) {
+    const logs = await guild.fetchAuditLogs({ type, limit: 10 }).catch(() => null);
+    if (!logs?.entries) continue;
+
+    for (const entry of logs.entries.values()) {
+      if (Date.now() - entry.createdTimestamp > 15000) continue;
+      if (targetId && entry.target?.id !== targetId && entry.targetId !== targetId) continue;
+      entries.push(entry);
+    }
+  }
+
+  entries.sort((a, b) => b.createdTimestamp - a.createdTimestamp);
+  return entries[0]?.executor || null;
 }
 
 async function stripDangerousRoles(member, reason) {
@@ -36,7 +45,7 @@ async function stripDangerousRoles(member, reason) {
 
   const removable = member.roles.cache.filter(role => {
     if (role.id === member.guild.id || !role.editable) return false;
-    return role.permissions.has([
+    return role.permissions.any([
       PermissionFlagsBits.Administrator,
       PermissionFlagsBits.ManageGuild,
       PermissionFlagsBits.ManageChannels,
