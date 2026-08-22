@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { initializeJoinToCreate, getConfiguration } from '../../services/joinToCreateService.js';
+import { initializeJoinToCreate, getConfiguration, removeTriggerChannel } from '../../services/joinToCreateService.js';
 import { getTempVoiceConfig, saveTempVoiceConfig } from '../../services/tempVoiceService.js';
 
 export default {
@@ -19,6 +19,9 @@ export default {
     if (subcommand === 'reset') {
       const jtc = await getConfiguration(client, guild.id).catch(() => null);
       for (const channelId of Object.keys(jtc?.temporaryChannels || {})) await guild.channels.delete(channelId).catch(() => {});
+      if (jtc?.triggerChannels?.length) {
+        for (const triggerId of jtc.triggerChannels) await removeTriggerChannel(client, guild.id, triggerId).catch(() => {});
+      }
       if (current.triggerChannelId) await guild.channels.delete(current.triggerChannelId).catch(() => {});
       if (current.panelChannelId) await guild.channels.delete(current.panelChannelId).catch(() => {});
       if (current.categoryId) await guild.channels.delete(current.categoryId).catch(() => {});
@@ -28,6 +31,11 @@ export default {
 
     if (current.triggerChannelId && guild.channels.cache.has(current.triggerChannelId)) {
       return interaction.reply({ content: `⚠️ TempVoice is already set up: <#${current.triggerChannelId}>`, ephemeral: true });
+    }
+
+    const existingJtc = await getConfiguration(client, guild.id);
+    if (existingJtc?.triggerChannels?.length) {
+      return interaction.reply({ content: `⚠️ This server already has a Join to Create system: <#${existingJtc.triggerChannels[0]}>. Reset it first with \`/tempvoice reset\`.`, ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
