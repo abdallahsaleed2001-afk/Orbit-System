@@ -3,6 +3,7 @@ import { logger } from '../../utils/logger.js';
 
 const NukeTypes = ['channelDelete','channelCreate','roleDelete','roleCreate','roleUpdate','webhookUpdate','webhookDelete','ban','kick','botAdd'];
 const AutoModTypes = ['spam','duplicate','mentions','invites','links','caps','badWords'];
+const AUTO_ACTIONS = new Set(['delete', 'timeout', 'kick', 'ban']);
 
 export const SECURITY_DEFAULTS = {
   enabled: true,
@@ -35,32 +36,26 @@ function normalizeIdList(value) {
   if (value && typeof value === 'object') return Object.keys(value).map(String).filter(Boolean);
   return [];
 }
+function sanitizeConfig(config) {
+  config.whitelist = config.whitelist || {};
+  config.whitelist.users = normalizeIdList(config.whitelist.users);
+  config.whitelist.roles = normalizeIdList(config.whitelist.roles);
+  config.whitelist.bots = normalizeIdList(config.whitelist.bots);
+  config.antiNuke.punishments = { ...SECURITY_DEFAULTS.antiNuke.punishments, ...(config.antiNuke.punishments || {}) };
+  for (const type of AutoModTypes) {
+    config.autoMod[type] ||= clone(SECURITY_DEFAULTS.autoMod[type]);
+    if (!AUTO_ACTIONS.has(config.autoMod[type].punishment)) config.autoMod[type].punishment = 'delete';
+  }
+  config.escalation = (config.escalation || []).map(level => ({ ...level, action: AUTO_ACTIONS.has(level.action) ? level.action : 'delete' }));
+  return config;
+}
 
 export async function getSecurityConfig(client, guildId) {
-  try {
-    const stored = await getFromDb(configKey(guildId), null);
-    const config = deepMerge(clone(SECURITY_DEFAULTS), stored || {});
-    config.whitelist = config.whitelist || {};
-    config.whitelist.users = normalizeIdList(config.whitelist.users);
-    config.whitelist.roles = normalizeIdList(config.whitelist.roles);
-    config.whitelist.bots = normalizeIdList(config.whitelist.bots);
-    config.antiNuke.punishments = { ...SECURITY_DEFAULTS.antiNuke.punishments, ...(config.antiNuke.punishments || {}) };
-    for (const type of AutoModTypes) config.autoMod[type].punishment ||= SECURITY_DEFAULTS.autoMod[type].punishment;
-    config.escalation = (config.escalation || []).map(level => ({ ...level, action: level.action === 'warn' ? 'delete' : level.action }));
-    return config;
-  } catch (error) {
-    logger.error('Failed to load security config', { guildId, error: error.message });
-    return clone(SECURITY_DEFAULTS);
-  }
+  try { return sanitizeConfig(deepMerge(clone(SECURITY_DEFAULTS), await getFromDb(configKey(guildId), null) || {})); }
+  catch (error) { logger.error('Failed to load security config', { guildId, error: error.message }); return clone(SECURITY_DEFAULTS); }
 }
 export async function updateSecurityConfig(client, guildId, patch) {
-  const current = await getSecurityConfig(client, guildId);
-  const updated = deepMerge(current, patch);
-  updated.whitelist = updated.whitelist || {};
-  updated.whitelist.users = normalizeIdList(updated.whitelist.users);
-  updated.whitelist.roles = normalizeIdList(updated.whitelist.roles);
-  updated.whitelist.bots = normalizeIdList(updated.whitelist.bots);
-  updated.escalation = (updated.escalation || []).map(level => ({ ...level, action: level.action === 'warn' ? 'delete' : level.action }));
+  const updated = sanitizeConfig(deepMerge(await getSecurityConfig(client, guildId), patch));
   await setInDb(configKey(guildId), updated);
   return updated;
 }
@@ -78,9 +73,7 @@ export async function addStrike(client, guildId, userId, reason = 'AutoMod viola
   await setInDb(strikeKey(guildId, userId), next);
   return next;
 }
-export async function clearStrikes(client, guildId, userId) {
-  await setInDb(strikeKey(guildId, userId), { count: 0, updatedAt: Date.now(), lastReason: '' });
-}
+export async function clearStrikes(client, guildId, userId) { await setInDb(strikeKey(guildId, userId), { count: 0, updatedAt: Date.now(), lastReason: '' }); }
 
 export function isWhitelisted(member, config) {
   if (!member) return false;
@@ -129,7 +122,6 @@ export async function processAutoMod(message, client) {
   const config = await getSecurityConfig(client, message.guild.id);
   const a = config.autoMod;
   if (!config.enabled || !a?.enabled || config.ignoredChannels?.includes(message.channel.id)) return false;
-
   const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
   if (!member || isWhitelisted(member, config)) return false;
 
@@ -156,10 +148,9 @@ export async function processAutoMod(message, client) {
   const strike = await addStrike(client, message.guild.id, message.author.id, reason);
   const escalation = config.escalation?.find(item => item.strike === strike.count);
   const primary = violations[0];
-  const action = (escalation?.action || a[primary.type]?.punishment || a.action || 'delete') === 'warn' ? 'delete' : (escalation?.action || a[primary.type]?.punishment || a.action || 'delete');
+  const action = escalation?.action || a[primary.type]?.punishment || 'delete';
   const duration = escalation?.durationMs || 60000;
 
-  // Re-check immediately before any destructive action so a whitelist change cannot race with enforcement.
   const latestConfig = await getSecurityConfig(client, message.guild.id);
   const latestMember = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
   if (!latestMember || isWhitelisted(latestMember, latestConfig)) return false;
