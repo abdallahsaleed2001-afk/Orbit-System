@@ -1,30 +1,28 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import { getPartnerData, savePartnerData, applicationEmbed, applicationButtons } from '../../utils/partner.js';
 
 export default {
   name: 'partner_apply_modal',
-  async execute(interaction) {
-    const server = interaction.fields.getTextInputValue('server_name');
-    const invite = interaction.fields.getTextInputValue('invite');
-    const members = interaction.fields.getTextInputValue('members');
-    const description = interaction.fields.getTextInputValue('description');
-    const embed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setTitle('🤝 Partnership Request')
-      .addFields(
-        { name: 'Server', value: server },
-        { name: 'Members', value: members },
-        { name: 'Invite', value: invite },
-        { name: 'Applicant', value: `${interaction.user}` },
-        { name: 'Description', value: description },
-      )
-      .setFooter({ text: 'Status: Pending' });
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('partner_accept').setLabel('Accept').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('partner_reject').setLabel('Reject').setStyle(ButtonStyle.Danger),
-    );
-    const target = interaction.guild.channels.cache.find(c => c.isTextBased() && c.name === 'partnership-requests');
-    if (!target) return interaction.reply({ content: 'The partnership request channel is not configured. Ask an administrator to run `/partner setup` again.', ephemeral: true });
-    await target.send({ embeds: [embed], components: [row] });
-    return interaction.reply({ content: 'Your partnership request has been submitted.', ephemeral: true });
+  async execute(interaction, client) {
+    const server = interaction.fields.getTextInputValue('server_name').trim();
+    const invite = interaction.fields.getTextInputValue('invite').trim();
+    const membersRaw = interaction.fields.getTextInputValue('members').trim();
+    const description = interaction.fields.getTextInputValue('description').trim();
+    const members = Number(membersRaw.replace(/[^0-9]/g, ''));
+    if (!server || !description || !Number.isFinite(members)) return interaction.reply({ content: '❌ Please provide valid application details.', ephemeral: true });
+    const data = await getPartnerData(client, interaction.guildId);
+    if (data.requirements.requireInvite && !/^https?:\/\/discord(?:\.gg|\.com\/invite)\//i.test(invite)) return interaction.reply({ content: '❌ Please provide a valid Discord invite link.', ephemeral: true });
+    if (members < data.requirements.minMembers) return interaction.reply({ content: `❌ Your server needs at least ${data.requirements.minMembers} members.`, ephemeral: true });
+    const duplicate = data.applications.find(a => a.applicantId === interaction.user.id && a.status === 'pending');
+    if (duplicate) return interaction.reply({ content: `❌ You already have pending partnership request #${duplicate.id}.`, ephemeral: true });
+
+    data.counter += 1;
+    const app = { id: data.counter, serverName: server, invite, members, description, applicantId: interaction.user.id, status: 'pending', createdAt: new Date().toISOString(), messageId: null };
+    const target = interaction.guild.channels.cache.get(data.requestChannelId);
+    if (!target) return interaction.reply({ content: '❌ Partnership request channel is missing. Run `/partner setup` again.', ephemeral: true });
+    const message = await target.send({ embeds: [applicationEmbed(app, interaction.guild)], components: applicationButtons(app) });
+    app.messageId = message.id;
+    data.applications.push(app);
+    await savePartnerData(client, interaction.guildId, data);
+    return interaction.reply({ content: `✅ Partnership request #${app.id} submitted.`, ephemeral: true });
   },
 };
