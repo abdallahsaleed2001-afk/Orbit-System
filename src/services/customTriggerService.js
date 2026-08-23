@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.js';
 const MAX_TRIGGERS = 100;
 const MAX_TRIGGER_LENGTH = 100;
 const cooldowns = new Map();
+const TARGET_ROLE_ID = '1534935138440314960';
 
 export const TRIGGER_ACTIONS = Object.freeze({
   LOCK: 'lock',
@@ -25,20 +26,16 @@ export async function addCustomTrigger(client, guildId, trigger, action, roleId 
   if (!normalizedTrigger) throw new Error('Trigger cannot be empty.');
   if (normalizedTrigger.length > MAX_TRIGGER_LENGTH) throw new Error(`Trigger cannot exceed ${MAX_TRIGGER_LENGTH} characters.`);
   if (!Object.values(TRIGGER_ACTIONS).includes(action)) throw new Error('Invalid trigger action.');
-  if ((action === TRIGGER_ACTIONS.ADD_ROLE || action === TRIGGER_ACTIONS.REMOVE_ROLE) && !roleId) {
-    throw new Error('A role is required for this action.');
-  }
+  if ((action === TRIGGER_ACTIONS.ADD_ROLE || action === TRIGGER_ACTIONS.REMOVE_ROLE) && !roleId) throw new Error('A role is required for this action.');
 
   const triggers = await getCustomTriggers(client, guildId);
   const existing = triggers.findIndex((item) => normalizeTrigger(item.trigger) === normalizedTrigger);
   const entry = { trigger: normalizedTrigger, action, roleId: roleId || null };
-
   if (existing >= 0) triggers[existing] = entry;
   else {
     if (triggers.length >= MAX_TRIGGERS) throw new Error(`A server can have up to ${MAX_TRIGGERS} custom triggers.`);
     triggers.push(entry);
   }
-
   await updateGuildConfig(client, guildId, { customTriggers: triggers });
   return entry;
 }
@@ -55,8 +52,7 @@ export async function removeCustomTrigger(client, guildId, trigger) {
 export async function handleCustomTrigger(message, client) {
   if (!message.guild || message.author.bot) return false;
 
-  // Exact match: surrounding whitespace is ignored, but extra characters are not.
-  // Example: "صور" matches, while "-صور", "صور123" and "صور ههه" do not.
+  // Exact match only. "صور" matches, while "-صور", "صور123" and "صور ههه" do not.
   const content = normalizeTrigger(message.content);
   if (!content) return false;
 
@@ -71,29 +67,29 @@ export async function handleCustomTrigger(message, client) {
 
   try {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels) &&
-        [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE].includes(trigger.action)) {
-      return false;
-    }
+        [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE].includes(trigger.action)) return false;
+
+    const targetRole = message.guild.roles.cache.get(TARGET_ROLE_ID) || await message.guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
+    if (!targetRole && [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE].includes(trigger.action)) return false;
 
     switch (trigger.action) {
       case TRIGGER_ACTIONS.LOCK:
-        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+        await message.channel.permissionOverwrites.edit(targetRole, { SendMessages: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
       case TRIGGER_ACTIONS.UNLOCK:
-        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: null }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+        await message.channel.permissionOverwrites.edit(targetRole, { SendMessages: null }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
       case TRIGGER_ACTIONS.HIDE:
-        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { ViewChannel: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+        await message.channel.permissionOverwrites.edit(targetRole, { ViewChannel: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
       case TRIGGER_ACTIONS.UNHIDE:
-        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { ViewChannel: null }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+        await message.channel.permissionOverwrites.edit(targetRole, { ViewChannel: null }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
       case TRIGGER_ACTIONS.ADD_ROLE:
       case TRIGGER_ACTIONS.REMOVE_ROLE: {
         const role = message.guild.roles.cache.get(trigger.roleId) || await message.guild.roles.fetch(trigger.roleId).catch(() => null);
         const botMember = message.guild.members.me;
-        if (!role || !botMember) return false;
-        if (role.managed || role.position >= botMember.roles.highest.position) return false;
+        if (!role || !botMember || role.managed || role.position >= botMember.roles.highest.position) return false;
         if (trigger.action === TRIGGER_ACTIONS.ADD_ROLE) {
           if (!message.member.roles.cache.has(role.id)) await message.member.roles.add(role, `Custom trigger "${trigger.trigger}"`);
         } else if (message.member.roles.cache.has(role.id)) {
