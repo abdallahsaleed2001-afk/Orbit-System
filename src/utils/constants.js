@@ -31,6 +31,11 @@ export const DEFAULT_GUILD_CONFIG = {
     welcomeChannel: null,
     autoRole: null,
     autoReplies: [],
+    autoReaction: {
+        enabled: false,
+        channelId: null,
+        reaction: null,
+    },
     logging: {
         enabled: false,
         channels: { audit: null, applications: null, reports: null },
