@@ -44,10 +44,13 @@ export default {
       // excluded above, and the 60-second cache avoids a database read per message.
       await trackStaffMessage(message);
 
-      // Auto replies use exact, case-sensitive matching across every guild channel.
-      // Bot messages are already excluded above, so the bot can never trigger itself.
+      // Exact-match auto replies run across every guild channel.
       const autoReplied = await handleAutoReply(message, client);
       if (autoReplied) return;
+
+      // Auto reaction: only the configured channel is monitored. Bot messages
+      // are excluded above, so the bot can never react to its own reaction flow.
+      await handleAutoReaction(message, client);
 
       const autoModTriggered = await processAutoMod(message, client);
       if (autoModTriggered) return;
@@ -81,6 +84,26 @@ async function handleAutoReply(message, client) {
     return true;
   } catch (error) {
     logger.error('Error handling auto reply:', error);
+    return false;
+  }
+}
+
+async function handleAutoReaction(message, client) {
+  try {
+    const config = await getGuildConfig(client, message.guild.id);
+    const autoReaction = config?.autoReaction;
+    if (!autoReaction?.enabled || !autoReaction.channelId || !autoReaction.reaction) return false;
+    if (message.channel.id !== autoReaction.channelId) return false;
+
+    await message.react(autoReaction.reaction);
+    return true;
+  } catch (error) {
+    logger.error('Error handling auto reaction:', {
+      error: error.message,
+      guildId: message.guild?.id,
+      channelId: message.channel?.id,
+      messageId: message.id,
+    });
     return false;
   }
 }
