@@ -14,6 +14,7 @@ import { createEmbed } from '../utils/embeds.js';
 import { isCommandEnabled } from '../services/commandAccessService.js';
 import { processAutoMod } from '../services/security/securityService.js';
 import { getStaffData, incrementStaffActivity, recordTicketLog } from '../services/staffService.js';
+import { handleCustomTrigger } from '../services/customTriggerService.js';
 import {
   getCountingGameConfig,
   saveCountingGameConfig,
@@ -39,6 +40,9 @@ export default {
       }
 
       await trackStaffMessage(message);
+
+      const customTriggerHandled = await handleCustomTrigger(message, client);
+      if (customTriggerHandled) return;
 
       const autoReplied = await handleAutoReply(message, client);
       if (autoReplied) return;
