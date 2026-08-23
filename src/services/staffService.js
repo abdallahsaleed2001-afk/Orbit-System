@@ -5,11 +5,16 @@ const key = (guildId) => `guild:${guildId}:staff`;
 const DEFAULTS = {
   config: { promotionChannelId: null, demotionChannelId: null, warningChannelId: null, notesChannelId: null, managerRoleId: null, warningsBeforeReview: 3 },
   members: {},
+  ticketLogMessages: {},
 };
 
 function normalize(data) {
   const value = data && typeof data === 'object' ? data : {};
-  return { config: { ...DEFAULTS.config, ...(value.config || {}) }, members: value.members && typeof value.members === 'object' ? value.members : {} };
+  return {
+    config: { ...DEFAULTS.config, ...(value.config || {}) },
+    members: value.members && typeof value.members === 'object' ? value.members : {},
+    ticketLogMessages: value.ticketLogMessages && typeof value.ticketLogMessages === 'object' ? value.ticketLogMessages : {},
+  };
 }
 
 export async function getStaffData(guildId) { return normalize(await getFromDb(key(guildId), DEFAULTS)); }
@@ -36,6 +41,36 @@ export async function addDemotion(guildId, userId, record) { const data = await 
 export async function addStaffNote(guildId, userId, authorId, note) { const data = await getStaffData(guildId); const profile = await getStaffProfile(guildId, userId); profile.notes.push({ id: `sn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, note: String(note).trim(), authorId, createdAt: new Date().toISOString() }); data.members[userId] = profile; await saveStaffData(guildId, data); return profile.notes.at(-1); }
 
 export async function incrementStaffActivity(guildId, userId, type, amount = 1) { const data = await getStaffData(guildId); const profile = await getStaffProfile(guildId, userId); profile.activity = profile.activity || {}; profile.activity[type] = Math.max(0, Number(profile.activity[type] || 0) + Number(amount || 0)); profile.activity.lastActiveAt = new Date().toISOString(); data.members[userId] = profile; await saveStaffData(guildId, data); return profile; }
+
+export async function recordTicketLog(guildId, { messageId, staffId, ticketId, ticketType = null, closedBy = null, closedAt = null }) {
+  if (!guildId || !messageId || !staffId || !ticketId) return { recorded: false, reason: 'missing_data' };
+  const data = await getStaffData(guildId);
+  if (data.ticketLogMessages[messageId]) return { recorded: false, reason: 'duplicate' };
+
+  const profile = await getStaffProfile(guildId, staffId);
+  profile.activity = profile.activity || {};
+  profile.activity.ticketsHandled = Math.max(0, Number(profile.activity.ticketsHandled || 0) + 1);
+  profile.activity.lastActiveAt = new Date().toISOString();
+
+  data.members[staffId] = profile;
+  data.ticketLogMessages[messageId] = {
+    ticketId: String(ticketId),
+    staffId: String(staffId),
+    ticketType,
+    closedBy,
+    closedAt: closedAt || new Date().toISOString(),
+    recordedAt: new Date().toISOString(),
+  };
+
+  // Keep the deduplication map bounded so it cannot grow forever.
+  const entries = Object.entries(data.ticketLogMessages);
+  if (entries.length > 1000) {
+    for (const [oldMessageId] of entries.slice(0, entries.length - 1000)) delete data.ticketLogMessages[oldMessageId];
+  }
+
+  await saveStaffData(guildId, data);
+  return { recorded: true, profile };
+}
 
 export function calculateActivityScore(profile) {
   const activity = profile?.activity || {};
