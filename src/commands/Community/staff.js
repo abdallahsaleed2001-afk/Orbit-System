@@ -17,6 +17,7 @@ import {
   addPromotion,
   addDemotion,
   addStaffNote,
+  resetStaffProfile,
 } from '../../services/staffService.js';
 import { withErrorHandling } from '../../utils/errorHandler.js';
 
@@ -69,14 +70,16 @@ export default {
       .addUserOption((opt) => opt.setName('user').setDescription('Staff member').setRequired(true))
       .addRoleOption((opt) => opt.setName('new_role').setDescription('Role to give').setRequired(true))
       .addRoleOption((opt) => opt.setName('remove_role').setDescription('Role to remove').setRequired(true))
-      .addStringOption((opt) => opt.setName('reason').setDescription('Reason').setRequired(true).setMaxLength(500)))
+      .addStringOption((opt) => opt.setName('reason').setDescription('Reason').setRequired(true).setMaxLength(500))
+      .addBooleanOption((opt) => opt.setName('reset_profile').setDescription('Reset current profile data after the promotion').setRequired(true)))
     .addSubcommand((sub) => sub
       .setName('demote')
       .setDescription('Demote a staff member')
       .addUserOption((opt) => opt.setName('user').setDescription('Staff member').setRequired(true))
       .addRoleOption((opt) => opt.setName('new_role').setDescription('Role to give').setRequired(true))
       .addRoleOption((opt) => opt.setName('remove_role').setDescription('Role to remove').setRequired(true))
-      .addStringOption((opt) => opt.setName('reason').setDescription('Reason').setRequired(true).setMaxLength(500)))
+      .addStringOption((opt) => opt.setName('reason').setDescription('Reason').setRequired(true).setMaxLength(500))
+      .addBooleanOption((opt) => opt.setName('reset_profile').setDescription('Reset current profile data after the demotion').setRequired(true)))
     .addSubcommand((sub) => sub
       .setName('note')
       .setDescription('Add a private staff note')
@@ -157,17 +160,19 @@ export default {
     if (newRole.position >= interaction.guild.members.me.roles.highest.position || removeRole.position >= interaction.guild.members.me.roles.highest.position) return interaction.reply({ content: 'I cannot manage one of these roles because it is above my highest role.', ephemeral: true });
 
     if (sub === 'promote' || sub === 'demote') {
+      const resetProfile = interaction.options.getBoolean('reset_profile', true);
       await target.roles.remove(removeRole).catch(() => null);
       await target.roles.add(newRole);
       const record = { fromRoleId: removeRole.id, fromRoleName: removeRole.name, toRoleId: newRole.id, toRoleName: newRole.name, reason, issuerId: interaction.user.id };
       if (sub === 'promote') await addPromotion(interaction.guildId, user.id, record);
       else await addDemotion(interaction.guildId, user.id, record);
+      if (resetProfile) await resetStaffProfile(interaction.guildId, user.id);
       const channelId = sub === 'promote' ? data.config.promotionChannelId : data.config.demotionChannelId;
       if (channelId) {
         const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
         if (channel?.isTextBased()) await channel.send(`${sub === 'promote' ? '📈' : '📉'} **Staff ${sub === 'promote' ? 'Promotion' : 'Demotion'}**\n${user}\n**${removeRole.name}** → **${newRole.name}**\nReason: ${reason}\nBy: ${interaction.user}`);
       }
-      return interaction.reply({ content: `${user} has been ${sub === 'promote' ? 'promoted' : 'demoted'}: **${removeRole.name}** → **${newRole.name}**.`, ephemeral: true });
+      return interaction.reply({ content: `${user} has been ${sub === 'promote' ? 'promoted' : 'demoted'}: **${removeRole.name}** → **${newRole.name}**.${resetProfile ? ' Profile data has been reset; promotion/demotion history was preserved.' : ''}`, ephemeral: true });
     }
 
     if (sub === 'note') {
