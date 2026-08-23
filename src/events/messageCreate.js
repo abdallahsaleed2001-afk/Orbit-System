@@ -13,6 +13,7 @@ import { enforceAbuseProtection, formatCooldownDuration } from '../utils/abusePr
 import { createEmbed } from '../utils/embeds.js';
 import { isCommandEnabled } from '../services/commandAccessService.js';
 import { processAutoMod } from '../services/security/securityService.js';
+import { recordTicketLog } from '../services/staffService.js';
 import {
   getCountingGameConfig,
   saveCountingGameConfig,
@@ -27,7 +28,15 @@ export default {
   name: Events.MessageCreate,
   async execute(message, client) {
     try {
-      if (message.author.bot || !message.guild) return;
+      if (!message.guild) return;
+
+      // Ticket bot integration: read only the ticket bot's closed-ticket embed.
+      // This runs before the normal bot-message early return so messages from the
+      // separate ticket bot can update Staff > Tickets Handled.
+      if (message.author.bot) {
+        await handleTicketClosedLog(message);
+        return;
+      }
 
       const autoModTriggered = await processAutoMod(message, client);
       if (autoModTriggered) return;
@@ -44,6 +53,64 @@ export default {
     }
   }
 };
+
+async function handleTicketClosedLog(message) {
+  try {
+    if (!message.embeds?.length) return;
+
+    const embed = message.embeds.find((item) => item.title?.trim() === 'تم إغلاق تذكرة');
+    if (!embed) return;
+
+    const fields = Array.isArray(embed.fields) ? embed.fields : [];
+    const getField = (...names) => {
+      const field = fields.find((item) => names.includes(String(item.name || '').trim()));
+      return field?.value?.trim() || null;
+    };
+
+    const channelName = getField('اسم القناة');
+    const claimedBy = getField('مستلم التذكرة');
+    const closedBy = getField('تم الإغلاق بواسطة');
+    if (!channelName || !claimedBy) return;
+
+    // "لم يتم استلامها" means there is no staff member to credit.
+    if (/لم\s*يتم\s*استلامها/i.test(claimedBy)) return;
+
+    // Discord mentions are the safest source of the staff ID. Support both
+    // user mentions and nick mentions, with a conservative fallback for IDs.
+    const mentionMatch = claimedBy.match(/<@!?([0-9]{15,25})>/);
+    const idMatch = claimedBy.match(/\b([0-9]{15,25})\b/);
+    const staffId = mentionMatch?.[1] || idMatch?.[1];
+    if (!staffId) {
+      logger.warn(`Ticket log found but claimed staff ID could not be parsed: ${claimedBy}`, {
+        guildId: message.guild.id,
+        messageId: message.id,
+      });
+      return;
+    }
+
+    const ticketType = channelName.split('-')[0] || null;
+    const result = await recordTicketLog(message.guild.id, {
+      messageId: message.id,
+      staffId,
+      ticketId: channelName,
+      ticketType,
+      closedBy,
+      closedAt: embed.timestamp || message.createdAt?.toISOString() || null,
+    });
+
+    if (result.recorded) {
+      logger.info(`Ticket handled recorded for staff ${staffId}: ${channelName}`, {
+        event: 'staff.ticket_handled',
+        guildId: message.guild.id,
+        staffId,
+        ticketId: channelName,
+        sourceMessageId: message.id,
+      });
+    }
+  } catch (error) {
+    logger.error('Error processing ticket closed log:', error);
+  }
+}
 
 async function handlePrefixCommand(message, client) {
   try {
