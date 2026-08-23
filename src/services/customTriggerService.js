@@ -55,9 +55,8 @@ export async function removeCustomTrigger(client, guildId, trigger) {
 export async function handleCustomTrigger(message, client) {
   if (!message.guild || message.author.bot) return false;
 
-  // Exact match: whitespace around the message is ignored, but any extra
-  // characters before/after the trigger prevent execution. For example,
-  // trigger "صور" does NOT execute for "-صور" or "صور123".
+  // Exact match: surrounding whitespace is ignored, but extra characters are not.
+  // Example: "صور" matches, while "-صور", "صور123" and "صور ههه" do not.
   const content = normalizeTrigger(message.content);
   if (!content) return false;
 
@@ -78,44 +77,23 @@ export async function handleCustomTrigger(message, client) {
 
     switch (trigger.action) {
       case TRIGGER_ACTIONS.LOCK:
-        await message.channel.permissionOverwrites.edit(
-          message.guild.roles.everyone,
-          { SendMessages: false },
-          { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` },
-        );
+        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
-
       case TRIGGER_ACTIONS.UNLOCK:
-        await message.channel.permissionOverwrites.edit(
-          message.guild.roles.everyone,
-          { SendMessages: null },
-          { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` },
-        );
+        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: null }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
-
       case TRIGGER_ACTIONS.HIDE:
-        await message.channel.permissionOverwrites.edit(
-          message.guild.roles.everyone,
-          { ViewChannel: false },
-          { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` },
-        );
+        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { ViewChannel: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
-
       case TRIGGER_ACTIONS.UNHIDE:
-        await message.channel.permissionOverwrites.edit(
-          message.guild.roles.everyone,
-          { ViewChannel: null },
-          { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` },
-        );
+        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { ViewChannel: null }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
-
       case TRIGGER_ACTIONS.ADD_ROLE:
       case TRIGGER_ACTIONS.REMOVE_ROLE: {
         const role = message.guild.roles.cache.get(trigger.roleId) || await message.guild.roles.fetch(trigger.roleId).catch(() => null);
         const botMember = message.guild.members.me;
         if (!role || !botMember) return false;
         if (role.managed || role.position >= botMember.roles.highest.position) return false;
-
         if (trigger.action === TRIGGER_ACTIONS.ADD_ROLE) {
           if (!message.member.roles.cache.has(role.id)) await message.member.roles.add(role, `Custom trigger "${trigger.trigger}"`);
         } else if (message.member.roles.cache.has(role.id)) {
@@ -123,21 +101,15 @@ export async function handleCustomTrigger(message, client) {
         }
         break;
       }
-
       default:
         return false;
     }
 
-    await message.delete().catch(() => {});
+    // Keep the original message and react to confirm successful execution.
+    await message.react('✅').catch(() => {});
     return true;
   } catch (error) {
-    logger.error('Custom trigger execution failed:', {
-      error: error.message,
-      guildId: message.guild.id,
-      channelId: message.channel.id,
-      trigger: trigger.trigger,
-      action: trigger.action,
-    });
+    logger.error('Custom trigger execution failed:', { error: error.message, guildId: message.guild.id, channelId: message.channel.id, trigger: trigger.trigger, action: trigger.action });
     return false;
   } finally {
     setTimeout(() => cooldowns.delete(cooldownKey), 2000);
