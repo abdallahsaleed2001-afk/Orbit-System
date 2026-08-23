@@ -8,7 +8,6 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import {
-  calculateActivityScore,
   countWarnings,
   getStaffData,
   getStaffProfile,
@@ -130,7 +129,7 @@ export default {
         .setTitle('Staff Profile')
         .setDescription(`**${user}**\n${member?.roles?.highest ? `Current Role: **${member.roles.highest.name}**` : ''}`)
         .addFields(
-          { name: 'Activity', value: `**${calculateActivityScore(profile)}%**`, inline: true },
+          { name: 'Activity', value: `**${Number(profile.activity?.messages || 0).toLocaleString()} messages**`, inline: true },
           { name: 'Warnings', value: `**${countWarnings(profile)}**`, inline: true },
           { name: 'Moderation Actions', value: `**${profile.activity?.moderationActions || 0}**`, inline: true },
           { name: 'Tickets Handled', value: `**${profile.activity?.ticketsHandled || 0}**`, inline: true },
