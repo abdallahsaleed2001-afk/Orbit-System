@@ -44,6 +44,11 @@ export default {
       // excluded above, and the 60-second cache avoids a database read per message.
       await trackStaffMessage(message);
 
+      // Auto replies use exact, case-sensitive matching across every guild channel.
+      // Bot messages are already excluded above, so the bot can never trigger itself.
+      const autoReplied = await handleAutoReply(message, client);
+      if (autoReplied) return;
+
       const autoModTriggered = await processAutoMod(message, client);
       if (autoModTriggered) return;
 
@@ -59,6 +64,26 @@ export default {
     }
   }
 };
+
+async function handleAutoReply(message, client) {
+  try {
+    const content = String(message.content ?? '');
+    if (!content) return false;
+
+    const config = await getGuildConfig(client, message.guild.id);
+    const rules = Array.isArray(config?.autoReplies) ? config.autoReplies : [];
+    if (!rules.length) return false;
+
+    const rule = rules.find((item) => String(item?.trigger ?? '') === content);
+    if (!rule || !String(rule.response ?? '').trim()) return false;
+
+    await message.channel.send({ content: String(rule.response).slice(0, 2000) });
+    return true;
+  } catch (error) {
+    logger.error('Error handling auto reply:', error);
+    return false;
+  }
+}
 
 async function trackStaffMessage(message) {
   try {
@@ -99,11 +124,8 @@ async function handleTicketClosedLog(message) {
     const closedBy = getField('تم الإغلاق بواسطة');
     if (!channelName || !claimedBy) return;
 
-    // "لم يتم استلامها" means there is no staff member to credit.
     if (/لم\s*يتم\s*استلامها/i.test(claimedBy)) return;
 
-    // Discord mentions are the safest source of the staff ID. Support both
-    // user mentions and nick mentions, with a conservative fallback for IDs.
     const mentionMatch = claimedBy.match(/<@!?([0-9]{15,25})>/);
     const idMatch = claimedBy.match(/\b([0-9]{15,25})\b/);
     const staffId = mentionMatch?.[1] || idMatch?.[1];
