@@ -9,6 +9,8 @@ const cooldowns = new Map();
 export const TRIGGER_ACTIONS = Object.freeze({
   LOCK: 'lock',
   UNLOCK: 'unlock',
+  HIDE: 'hide',
+  UNHIDE: 'unhide',
   ADD_ROLE: 'add_role',
   REMOVE_ROLE: 'remove_role',
 });
@@ -53,6 +55,9 @@ export async function removeCustomTrigger(client, guildId, trigger) {
 export async function handleCustomTrigger(message, client) {
   if (!message.guild || message.author.bot) return false;
 
+  // Exact match: whitespace around the message is ignored, but any extra
+  // characters before/after the trigger prevent execution. For example,
+  // trigger "صور" does NOT execute for "-صور" or "صور123".
   const content = normalizeTrigger(message.content);
   if (!content) return false;
 
@@ -66,10 +71,13 @@ export async function handleCustomTrigger(message, client) {
   cooldowns.set(cooldownKey, Date.now() + 1500);
 
   try {
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels) &&
+        [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE].includes(trigger.action)) {
+      return false;
+    }
+
     switch (trigger.action) {
       case TRIGGER_ACTIONS.LOCK:
-        if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return false;
-        if (!message.channel.permissionsFor(message.guild.roles.everyone)?.has(PermissionFlagsBits.SendMessages)) return true;
         await message.channel.permissionOverwrites.edit(
           message.guild.roles.everyone,
           { SendMessages: false },
@@ -78,7 +86,6 @@ export async function handleCustomTrigger(message, client) {
         break;
 
       case TRIGGER_ACTIONS.UNLOCK:
-        if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return false;
         await message.channel.permissionOverwrites.edit(
           message.guild.roles.everyone,
           { SendMessages: null },
@@ -86,11 +93,28 @@ export async function handleCustomTrigger(message, client) {
         );
         break;
 
+      case TRIGGER_ACTIONS.HIDE:
+        await message.channel.permissionOverwrites.edit(
+          message.guild.roles.everyone,
+          { ViewChannel: false },
+          { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` },
+        );
+        break;
+
+      case TRIGGER_ACTIONS.UNHIDE:
+        await message.channel.permissionOverwrites.edit(
+          message.guild.roles.everyone,
+          { ViewChannel: null },
+          { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` },
+        );
+        break;
+
       case TRIGGER_ACTIONS.ADD_ROLE:
       case TRIGGER_ACTIONS.REMOVE_ROLE: {
         const role = message.guild.roles.cache.get(trigger.roleId) || await message.guild.roles.fetch(trigger.roleId).catch(() => null);
-        if (!role) return false;
-        if (role.managed || role.position >= message.guild.members.me.roles.highest.position) return false;
+        const botMember = message.guild.members.me;
+        if (!role || !botMember) return false;
+        if (role.managed || role.position >= botMember.roles.highest.position) return false;
 
         if (trigger.action === TRIGGER_ACTIONS.ADD_ROLE) {
           if (!message.member.roles.cache.has(role.id)) await message.member.roles.add(role, `Custom trigger "${trigger.trigger}"`);
