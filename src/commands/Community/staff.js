@@ -8,8 +8,10 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import {
+  calculateActivityScore,
   countWarnings,
   getStaffData,
+  getStaffLeaderboard,
   getStaffProfile,
   updateStaffConfig,
   addStaffWarning,
@@ -54,6 +56,7 @@ export default {
     .setDescription('Manage server staff')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sub) => sub.setName('dashboard').setDescription('Open the staff dashboard'))
+    .addSubcommand((sub) => sub.setName('leaderboard').setDescription('View staff performance leaderboard'))
     .addSubcommand((sub) => sub
       .setName('profile')
       .setDescription('View a staff profile')
@@ -98,8 +101,16 @@ export default {
     const sub = interaction.options.getSubcommand();
     const data = await getStaffData(interaction.guildId);
 
-    if (sub === 'dashboard') {
-      return interaction.reply({ embeds: [dashboardEmbed(interaction.guild, data)], components: dashboardButtons() });
+    if (sub === 'dashboard') return interaction.reply({ embeds: [dashboardEmbed(interaction.guild, data)], components: dashboardButtons() });
+
+    if (sub === 'leaderboard') {
+      const leaderboard = getStaffLeaderboard(data, 10);
+      if (!leaderboard.length) return interaction.reply({ content: 'No staff performance data exists yet.', ephemeral: true });
+      const lines = leaderboard.map((entry, index) => {
+        const activity = entry.profile?.activity || {};
+        return `${index + 1}. <@${entry.userId}> — **${entry.score}/100**\n   💬 ${Number(activity.messages || 0).toLocaleString()} messages • 🎫 ${Number(activity.ticketsHandled || 0)} tickets • ⏱️ ${Number(activity.shiftHours || 0).toFixed(2)}h shifts • ⚠️ ${countWarnings(entry.profile)} warnings`;
+      });
+      return interaction.reply({ embeds: [new EmbedBuilder().setTitle('Staff Performance Leaderboard').setDescription(lines.join('\n\n')).setFooter({ text: 'Performance score combines staff activity and completed shift hours.' })] });
     }
 
     if (sub === 'setup') {
@@ -129,10 +140,13 @@ export default {
         .setTitle('Staff Profile')
         .setDescription(`**${user}**\n${member?.roles?.highest ? `Current Role: **${member.roles.highest.name}**` : ''}`)
         .addFields(
+          { name: 'Performance', value: `**${calculateActivityScore(profile)}/100**`, inline: true },
           { name: 'Activity', value: `**${Number(profile.activity?.messages || 0).toLocaleString()} messages**`, inline: true },
           { name: 'Warnings', value: `**${countWarnings(profile)}**`, inline: true },
           { name: 'Moderation Actions', value: `**${profile.activity?.moderationActions || 0}**`, inline: true },
           { name: 'Tickets Handled', value: `**${profile.activity?.ticketsHandled || 0}**`, inline: true },
+          { name: 'Shift Hours', value: `**${Number(profile.activity?.shiftHours || 0).toFixed(2)}h**`, inline: true },
+          { name: 'Shifts', value: `**${profile.activity?.shiftCount || 0}**`, inline: true },
           { name: 'Promotions', value: `**${profile.promotions.length}**`, inline: true },
           { name: 'Demotions', value: `**${profile.demotions.length}**`, inline: true },
         )
@@ -141,7 +155,7 @@ export default {
 
     if (sub === 'warn') {
       const reason = interaction.options.getString('reason', true);
-      const warning = await addStaffWarning(interaction.guildId, user.id, interaction.user.id, reason);
+      await addStaffWarning(interaction.guildId, user.id, interaction.user.id, reason);
       const profile = await getStaffProfile(interaction.guildId, user.id);
       const channelId = data.config.warningChannelId;
       if (channelId) {
