@@ -43,13 +43,9 @@ export async function addStaffNote(guildId, userId, authorId, note) { const data
 export async function resetStaffProfile(guildId, userId) {
   const data = await getStaffData(guildId);
   const profile = await getStaffProfile(guildId, userId);
-
-  // Reset current profile statistics/data only.
-  // Promotions and demotions are permanent history and must never be removed by this reset.
   profile.warnings = [];
   profile.notes = [];
   profile.activity = {};
-
   data.members[userId] = profile;
   await saveStaffData(guildId, data);
   return profile;
@@ -57,32 +53,31 @@ export async function resetStaffProfile(guildId, userId) {
 
 export async function incrementStaffActivity(guildId, userId, type, amount = 1) { const data = await getStaffData(guildId); const profile = await getStaffProfile(guildId, userId); profile.activity = profile.activity || {}; profile.activity[type] = Math.max(0, Number(profile.activity[type] || 0) + Number(amount || 0)); profile.activity.lastActiveAt = new Date().toISOString(); data.members[userId] = profile; await saveStaffData(guildId, data); return profile; }
 
+export async function recordStaffShift(guildId, userId, durationHours) {
+  const data = await getStaffData(guildId);
+  const profile = await getStaffProfile(guildId, userId);
+  profile.activity = profile.activity || {};
+  profile.activity.shiftHours = Math.max(0, Number(profile.activity.shiftHours || 0) + Number(durationHours || 0));
+  profile.activity.shiftCount = Math.max(0, Number(profile.activity.shiftCount || 0) + 1);
+  profile.activity.lastShiftHours = Math.max(0, Number(durationHours || 0));
+  profile.activity.lastActiveAt = new Date().toISOString();
+  data.members[userId] = profile;
+  await saveStaffData(guildId, data);
+  return profile;
+}
+
 export async function recordTicketLog(guildId, { messageId, staffId, ticketId, ticketType = null, closedBy = null, closedAt = null }) {
   if (!guildId || !messageId || !staffId || !ticketId) return { recorded: false, reason: 'missing_data' };
   const data = await getStaffData(guildId);
   if (data.ticketLogMessages[messageId]) return { recorded: false, reason: 'duplicate' };
-
   const profile = await getStaffProfile(guildId, staffId);
   profile.activity = profile.activity || {};
   profile.activity.ticketsHandled = Math.max(0, Number(profile.activity.ticketsHandled || 0) + 1);
   profile.activity.lastActiveAt = new Date().toISOString();
-
   data.members[staffId] = profile;
-  data.ticketLogMessages[messageId] = {
-    ticketId: String(ticketId),
-    staffId: String(staffId),
-    ticketType,
-    closedBy,
-    closedAt: closedAt || new Date().toISOString(),
-    recordedAt: new Date().toISOString(),
-  };
-
-  // Keep the deduplication map bounded so it cannot grow forever.
+  data.ticketLogMessages[messageId] = { ticketId: String(ticketId), staffId: String(staffId), ticketType, closedBy, closedAt: closedAt || new Date().toISOString(), recordedAt: new Date().toISOString() };
   const entries = Object.entries(data.ticketLogMessages);
-  if (entries.length > 1000) {
-    for (const [oldMessageId] of entries.slice(0, entries.length - 1000)) delete data.ticketLogMessages[oldMessageId];
-  }
-
+  if (entries.length > 1000) for (const [oldMessageId] of entries.slice(0, entries.length - 1000)) delete data.ticketLogMessages[oldMessageId];
   await saveStaffData(guildId, data);
   return { recorded: true, profile };
 }
@@ -94,7 +89,8 @@ export function calculateActivityScore(profile) {
   const events = Number(activity.eventsManaged || 0);
   const commands = Number(activity.commands || 0);
   const messages = Number(activity.messages || 0);
-  return Math.round(Math.min(100, moderation * 0.4 + tickets * 0.35 + events * 5 + commands * 0.05 + messages * 0.01));
+  const shiftHours = Number(activity.shiftHours || 0);
+  return Math.round(Math.min(100, moderation * 0.4 + tickets * 0.35 + events * 5 + commands * 0.05 + messages * 0.01 + shiftHours * 1.5));
 }
 
 export function countWarnings(profile) { return Array.isArray(profile?.warnings) ? profile.warnings.length : 0; }
