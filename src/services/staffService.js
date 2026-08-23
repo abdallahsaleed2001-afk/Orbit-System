@@ -40,6 +40,21 @@ export async function addPromotion(guildId, userId, record) { const data = await
 export async function addDemotion(guildId, userId, record) { const data = await getStaffData(guildId); const profile = await getStaffProfile(guildId, userId); profile.demotions.push({ id: `sd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, ...record, createdAt: new Date().toISOString() }); data.members[userId] = profile; await saveStaffData(guildId, data); return profile.demotions.at(-1); }
 export async function addStaffNote(guildId, userId, authorId, note) { const data = await getStaffData(guildId); const profile = await getStaffProfile(guildId, userId); profile.notes.push({ id: `sn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, note: String(note).trim(), authorId, createdAt: new Date().toISOString() }); data.members[userId] = profile; await saveStaffData(guildId, data); return profile.notes.at(-1); }
 
+export async function resetStaffProfile(guildId, userId) {
+  const data = await getStaffData(guildId);
+  const profile = await getStaffProfile(guildId, userId);
+
+  // Reset current profile statistics/data only.
+  // Promotions and demotions are permanent history and must never be removed by this reset.
+  profile.warnings = [];
+  profile.notes = [];
+  profile.activity = {};
+
+  data.members[userId] = profile;
+  await saveStaffData(guildId, data);
+  return profile;
+}
+
 export async function incrementStaffActivity(guildId, userId, type, amount = 1) { const data = await getStaffData(guildId); const profile = await getStaffProfile(guildId, userId); profile.activity = profile.activity || {}; profile.activity[type] = Math.max(0, Number(profile.activity[type] || 0) + Number(amount || 0)); profile.activity.lastActiveAt = new Date().toISOString(); data.members[userId] = profile; await saveStaffData(guildId, data); return profile; }
 
 export async function recordTicketLog(guildId, { messageId, staffId, ticketId, ticketType = null, closedBy = null, closedAt = null }) {
