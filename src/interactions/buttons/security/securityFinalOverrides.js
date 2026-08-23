@@ -49,7 +49,7 @@ async function whitelistPage(interaction, client) {
 }
 
 function whitelistModal(interaction, type, title, label, current) {
-  return interaction.showModal(new ModalBuilder().setCustomId(`security_final_wl_${type}:${interaction.user.id}`).setTitle(title).addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('value').setLabel(label).setPlaceholder('ID or mention, multiple values supported').setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(current.join('\n').slice(0, 4000)))));
+  return interaction.showModal(new ModalBuilder().setCustomId(`security_final_wl_${type}:${interaction.user.id}`).setTitle(title).addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('value').setLabel(label).setPlaceholder('ID or mention, multiple values supported').setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(current.join('\n').slice(0, 4000))));
 }
 
 async function saveWhitelist(interaction, client, type) {
