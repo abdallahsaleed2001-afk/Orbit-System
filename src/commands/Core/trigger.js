@@ -9,6 +9,8 @@ import {
 const ACTION_LABELS = {
   [TRIGGER_ACTIONS.LOCK]: 'Lock current channel',
   [TRIGGER_ACTIONS.UNLOCK]: 'Unlock current channel',
+  [TRIGGER_ACTIONS.HIDE]: 'Hide current channel',
+  [TRIGGER_ACTIONS.UNHIDE]: 'Unhide current channel',
   [TRIGGER_ACTIONS.ADD_ROLE]: 'Give a role',
   [TRIGGER_ACTIONS.REMOVE_ROLE]: 'Remove a role',
 };
@@ -33,6 +35,8 @@ export default {
         .addChoices(
           { name: ACTION_LABELS[TRIGGER_ACTIONS.LOCK], value: TRIGGER_ACTIONS.LOCK },
           { name: ACTION_LABELS[TRIGGER_ACTIONS.UNLOCK], value: TRIGGER_ACTIONS.UNLOCK },
+          { name: ACTION_LABELS[TRIGGER_ACTIONS.HIDE], value: TRIGGER_ACTIONS.HIDE },
+          { name: ACTION_LABELS[TRIGGER_ACTIONS.UNHIDE], value: TRIGGER_ACTIONS.UNHIDE },
           { name: ACTION_LABELS[TRIGGER_ACTIONS.ADD_ROLE], value: TRIGGER_ACTIONS.ADD_ROLE },
           { name: ACTION_LABELS[TRIGGER_ACTIONS.REMOVE_ROLE], value: TRIGGER_ACTIONS.REMOVE_ROLE },
         ))
@@ -59,7 +63,7 @@ export default {
 
     try {
       if (subcommand === 'add') {
-        const word = interaction.options.getString('word', true);
+        const word = interaction.options.getString('word', true).trim();
         const action = interaction.options.getString('action', true);
         const role = interaction.options.getRole('role');
 
