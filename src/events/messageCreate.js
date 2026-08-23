@@ -20,6 +20,7 @@ import {
   isValidCountingMessage,
   recordCorrectCount,
 } from '../services/countingGameService.js';
+import { getColorByNumber, isColorSelection, parseColorNumber } from '../services/colorService.js';
 
 const MESSAGE_XP_RATE_LIMIT_ATTEMPTS = 12;
 const MESSAGE_XP_RATE_LIMIT_WINDOW_MS = 10000;
@@ -32,25 +33,20 @@ export default {
     try {
       if (!message.guild) return;
 
-      // Ticket bot integration: read only the ticket bot's closed-ticket embed.
-      // This runs before the normal bot-message early return so messages from the
-      // separate ticket bot can update Staff > Tickets Handled.
       if (message.author.bot) {
         await handleTicketClosedLog(message);
         return;
       }
 
-      // Count every message sent by a tracked staff member. Bot messages are
-      // excluded above, and the 60-second cache avoids a database read per message.
       await trackStaffMessage(message);
 
-      // Exact-match auto replies run across every guild channel.
       const autoReplied = await handleAutoReply(message, client);
       if (autoReplied) return;
 
-      // Auto reaction: only the configured channel is monitored. Bot messages
-      // are excluded above, so the bot can never react to its own reaction flow.
       await handleAutoReaction(message, client);
+
+      const colorHandled = await handleColorSelection(message, client);
+      if (colorHandled) return;
 
       const autoModTriggered = await processAutoMod(message, client);
       if (autoModTriggered) return;
@@ -104,6 +100,40 @@ async function handleAutoReaction(message, client) {
       channelId: message.channel?.id,
       messageId: message.id,
     });
+    return false;
+  }
+}
+
+async function handleColorSelection(message, client) {
+  try {
+    if (!isColorSelection(message.content)) return false;
+
+    const number = parseColorNumber(message.content);
+    if (!number || number < 1 || number > 100) return false;
+
+    const color = await getColorByNumber(client, message.guild.id, number);
+    if (!color) return false;
+    if (message.channel.id !== (await client.db.get(`colors:${message.guild.id}`, null))?.channelId) return false;
+
+    const config = await client.db.get(`colors:${message.guild.id}`, null);
+    const roleId = config?.roleIds?.[number - 1];
+    if (!roleId) return false;
+
+    const member = message.member || await message.guild.members.fetch(message.author.id);
+    const role = message.guild.roles.cache.get(roleId) || await message.guild.roles.fetch(roleId).catch(() => null);
+    if (!role) return false;
+
+    const colorRoleIds = new Set(config.roleIds || []);
+    const oldRoles = member.roles.cache.filter((item) => colorRoleIds.has(item.id));
+    if (oldRoles.size) await member.roles.remove([...oldRoles.values()], 'Color selection').catch(() => {});
+    await member.roles.add(role, 'Color selection');
+
+    const reply = await message.channel.send(`🎨 ${message.author} تم تغيير لونك إلى **${color.hex}** — اللون رقم **${number}**.`);
+    setTimeout(() => reply.delete().catch(() => {}), 7000);
+    await message.delete().catch(() => {});
+    return true;
+  } catch (error) {
+    logger.error('Error handling color selection:', error);
     return false;
   }
 }
