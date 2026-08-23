@@ -150,3 +150,10 @@ export function calculateActivityScore(profile) {
 export function countWarnings(profile) {
   return Array.isArray(profile?.warnings) ? profile.warnings.length : 0;
 }
+
+export function getStaffLeaderboard(data, limit = 10) {
+  return Object.entries(data?.members || {})
+    .map(([userId, profile]) => ({ userId, profile, score: calculateActivityScore(profile) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.max(1, Math.min(25, Number(limit) || 10)));
+}
