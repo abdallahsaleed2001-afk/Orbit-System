@@ -13,7 +13,7 @@ import { enforceAbuseProtection, formatCooldownDuration } from '../utils/abusePr
 import { createEmbed } from '../utils/embeds.js';
 import { isCommandEnabled } from '../services/commandAccessService.js';
 import { processAutoMod } from '../services/security/securityService.js';
-import { recordTicketLog } from '../services/staffService.js';
+import { getStaffData, incrementStaffActivity, recordTicketLog } from '../services/staffService.js';
 import {
   getCountingGameConfig,
   saveCountingGameConfig,
@@ -23,6 +23,8 @@ import {
 
 const MESSAGE_XP_RATE_LIMIT_ATTEMPTS = 12;
 const MESSAGE_XP_RATE_LIMIT_WINDOW_MS = 10000;
+const STAFF_CACHE_TTL_MS = 60 * 1000;
+const staffCache = new Map();
 
 export default {
   name: Events.MessageCreate,
@@ -37,6 +39,10 @@ export default {
         await handleTicketClosedLog(message);
         return;
       }
+
+      // Count every message sent by a tracked staff member. Bot messages are
+      // excluded above, and the 60-second cache avoids a database read per message.
+      await trackStaffMessage(message);
 
       const autoModTriggered = await processAutoMod(message, client);
       if (autoModTriggered) return;
@@ -53,6 +59,27 @@ export default {
     }
   }
 };
+
+async function trackStaffMessage(message) {
+  try {
+    const now = Date.now();
+    let cached = staffCache.get(message.guild.id);
+
+    if (!cached || now - cached.updatedAt >= STAFF_CACHE_TTL_MS) {
+      const data = await getStaffData(message.guild.id);
+      cached = {
+        updatedAt: now,
+        staffIds: new Set(Object.keys(data.members || {})),
+      };
+      staffCache.set(message.guild.id, cached);
+    }
+
+    if (!cached.staffIds.has(message.author.id)) return;
+    await incrementStaffActivity(message.guild.id, message.author.id, 'messages');
+  } catch (error) {
+    logger.error('Error tracking staff message activity:', error);
+  }
+}
 
 async function handleTicketClosedLog(message) {
   try {
