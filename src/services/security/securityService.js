@@ -2,14 +2,14 @@ import { getFromDb, setInDb } from '../../utils/database.js';
 import { logger } from '../../utils/logger.js';
 
 const NukeTypes = ['channelDelete','channelCreate','roleDelete','roleCreate','roleUpdate','webhookUpdate','webhookDelete','ban','kick','botAdd'];
-const AutoModTypes = ['spam','duplicate','mentions','invites','links','caps','badWords'];
+const AutoModTypes = ['spam','duplicate','repeatedWords','mentions','invites','links','caps','badWords'];
 const AUTO_ACTIONS = new Set(['delete', 'timeout', 'kick', 'ban']);
 
 export const SECURITY_DEFAULTS = {
   enabled: true,
   antiNuke: { enabled: true, windowMs: 10000, thresholds: { channelDelete: 3, channelCreate: 5, roleDelete: 3, roleCreate: 5, roleUpdate: 1, webhookUpdate: 3, webhookDelete: 2, ban: 5, kick: 5, botAdd: 1 }, action: 'strip', punishments: Object.fromEntries(NukeTypes.map(type => [type, ['ban','kick','botAdd'].includes(type) ? 'ban' : 'strip'])), lockdown: true },
   antiRaid: { enabled: true, joins: 8, windowMs: 10000, minAccountAgeMs: 24 * 60 * 60 * 1000, action: 'timeout', punishment: 'timeout', timeoutMs: 10 * 60 * 1000, lockdown: true, lockdownMs: 10 * 60 * 1000 },
-  autoMod: { enabled: true, spam: { enabled: true, maxMessages: 6, windowMs: 5000, punishment: 'delete' }, duplicate: { enabled: true, maxRepeats: 3, windowMs: 10000, punishment: 'delete' }, mentions: { enabled: true, max: 6, punishment: 'delete' }, caps: { enabled: false, ratio: 0.8, minLength: 12, punishment: 'delete' }, invites: { enabled: true, punishment: 'delete' }, links: { enabled: false, punishment: 'delete' }, badWords: { enabled: false, words: [], punishment: 'delete' }, action: 'delete' },
+  autoMod: { enabled: true, spam: { enabled: true, maxMessages: 6, windowMs: 5000, punishment: 'delete' }, duplicate: { enabled: true, maxRepeats: 3, windowMs: 10000, punishment: 'delete' }, repeatedWords: { enabled: true, maxRepeats: 3, minWordLength: 4, punishment: 'delete' }, mentions: { enabled: true, max: 6, punishment: 'delete' }, caps: { enabled: false, ratio: 0.8, minLength: 12, punishment: 'delete' }, invites: { enabled: true, punishment: 'delete' }, links: { enabled: false, punishment: 'delete' }, badWords: { enabled: false, words: [], punishment: 'delete' }, action: 'delete' },
   escalation: [
     { strike: 1, action: 'delete', durationMs: 0 }, { strike: 2, action: 'timeout', durationMs: 60 * 1000 }, { strike: 3, action: 'timeout', durationMs: 10 * 60 * 1000 },
     { strike: 4, action: 'timeout', durationMs: 60 * 60 * 1000 }, { strike: 5, action: 'kick', durationMs: 0 }, { strike: 6, action: 'ban', durationMs: 0 },
@@ -41,6 +41,7 @@ function sanitizeConfig(config) {
   config.whitelist.users = normalizeIdList(config.whitelist.users);
   config.whitelist.roles = normalizeIdList(config.whitelist.roles);
   config.whitelist.bots = normalizeIdList(config.whitelist.bots);
+  config.ignoredChannels = normalizeIdList(config.ignoredChannels);
   config.antiNuke.punishments = { ...SECURITY_DEFAULTS.antiNuke.punishments, ...(config.antiNuke.punishments || {}) };
   for (const type of AutoModTypes) {
     config.autoMod[type] ||= clone(SECURITY_DEFAULTS.autoMod[type]);
@@ -106,6 +107,19 @@ function autoModKey(guildId, userId) { return `${guildId}:${userId}`; }
 function autoModData(guildId, userId) { const key = autoModKey(guildId, userId); let data = autoModState.get(key); if (!data) { data = { messages: [], repeats: [] }; autoModState.set(key, data); } return data; }
 function normalizeMessage(content) { return String(content || '').trim().toLowerCase().replace(/\s+/g, ' '); }
 function capRatio(content) { const letters = String(content || '').match(/[A-Za-z]/g) || []; const upper = String(content || '').match(/[A-Z]/g) || []; return letters.length ? upper.length / letters.length : 0; }
+function repeatedWord(content, settings) {
+  const words = String(content || '').toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+  const counts = new Map();
+  const minLength = Math.max(1, Number(settings?.minWordLength ?? 4));
+  const ignored = new Set(['الله']);
+  for (const word of words) {
+    if (word.length < minLength || ignored.has(word)) continue;
+    const count = (counts.get(word) || 0) + 1;
+    counts.set(word, count);
+    if (count >= Number(settings?.maxRepeats ?? 3)) return word;
+  }
+  return null;
+}
 
 async function executeAutoModAction(message, action, duration, reason, config) {
   const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
@@ -136,6 +150,8 @@ export async function processAutoMod(message, client) {
   const violations = [];
   if (a.spam.enabled && data.messages.filter(t => now - t <= a.spam.windowMs).length >= a.spam.maxMessages) violations.push({ type: 'spam', reason: `message spam (${a.spam.maxMessages}/${Math.round(a.spam.windowMs / 1000)}s)` });
   if (a.duplicate.enabled && data.repeats.filter(x => now - x.time <= a.duplicate.windowMs && x.content === normalizeMessage(content)).length >= a.duplicate.maxRepeats) violations.push({ type: 'duplicate', reason: `duplicate spam (${a.duplicate.maxRepeats})` });
+  const repeated = a.repeatedWords?.enabled ? repeatedWord(content, a.repeatedWords) : null;
+  if (repeated) violations.push({ type: 'repeatedWords', reason: `repeated word "${repeated}" (${a.repeatedWords.maxRepeats || 3}+)` });
   const mentions = message.mentions.users.size + message.mentions.roles.size;
   if (a.mentions.enabled && mentions >= a.mentions.max) violations.push({ type: 'mentions', reason: `mention spam (${mentions})` });
   if (a.invites.enabled && /(?:discord\.gg|discord(?:app)?\.com\/invite)\/\S+/i.test(content)) violations.push({ type: 'invites', reason: 'Discord invite' });
