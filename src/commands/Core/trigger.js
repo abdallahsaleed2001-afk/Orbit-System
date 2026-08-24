@@ -13,6 +13,10 @@ const ACTION_LABELS = {
   [TRIGGER_ACTIONS.UNHIDE]: 'Unhide current channel',
   [TRIGGER_ACTIONS.ADD_ROLE]: 'Give a role',
   [TRIGGER_ACTIONS.REMOVE_ROLE]: 'Remove a role',
+  [TRIGGER_ACTIONS.BAN]: 'Ban the target user',
+  [TRIGGER_ACTIONS.KICK]: 'Kick the target user',
+  [TRIGGER_ACTIONS.WARN]: 'Warn the target user',
+  [TRIGGER_ACTIONS.MUTE]: 'Give the mute role to the target user',
 };
 
 export default {
@@ -39,6 +43,10 @@ export default {
           { name: ACTION_LABELS[TRIGGER_ACTIONS.UNHIDE], value: TRIGGER_ACTIONS.UNHIDE },
           { name: ACTION_LABELS[TRIGGER_ACTIONS.ADD_ROLE], value: TRIGGER_ACTIONS.ADD_ROLE },
           { name: ACTION_LABELS[TRIGGER_ACTIONS.REMOVE_ROLE], value: TRIGGER_ACTIONS.REMOVE_ROLE },
+          { name: 'Ban the target user', value: TRIGGER_ACTIONS.BAN },
+          { name: 'Kick the target user', value: TRIGGER_ACTIONS.KICK },
+          { name: 'Warn the target user', value: TRIGGER_ACTIONS.WARN },
+          { name: 'Mute the target user', value: TRIGGER_ACTIONS.MUTE },
         ))
       .addRoleOption((option) => option
         .setName('role')
