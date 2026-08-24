@@ -14,11 +14,6 @@ export const TRIGGER_ACTIONS = Object.freeze({
   ADD_ROLE: 'add_role', REMOVE_ROLE: 'remove_role', BAN: 'ban', KICK: 'kick', WARN: 'warn', MUTE: 'mute',
 });
 
-const BUILTIN_TRIGGERS = new Map([
-  ['بان', TRIGGER_ACTIONS.BAN], ['طرد', TRIGGER_ACTIONS.KICK],
-  ['تحذير', TRIGGER_ACTIONS.WARN], ['ميوت', TRIGGER_ACTIONS.MUTE],
-]);
-
 export async function getCustomTriggers(client, guildId) {
   const config = await getGuildConfig(client, guildId);
   return Array.isArray(config.customTriggers) ? config.customTriggers : [];
@@ -54,8 +49,7 @@ export async function handleCustomTrigger(message, client) {
   if (!content) return false;
 
   const triggers = await getCustomTriggers(client, message.guild.id);
-  const configured = triggers.find((item) => normalizeTrigger(item.trigger) === content);
-  const trigger = configured || (BUILTIN_TRIGGERS.has(content) ? { trigger: content, action: BUILTIN_TRIGGERS.get(content), roleId: null, builtin: true } : null);
+  const trigger = triggers.find((item) => normalizeTrigger(item.trigger) === content);
   if (!trigger) return false;
 
   const cooldownKey = `${message.guild.id}:${message.author.id}:${content}`;
@@ -108,24 +102,24 @@ async function executeModerationTrigger(message, action) {
 
   if (action === TRIGGER_ACTIONS.BAN) {
     if (!message.member.permissions.has(PermissionFlagsBits.BanMembers)) return false;
-    await member.ban({ reason: `Trigger "بان" used by ${message.author.tag}` });
+    await member.ban({ reason: `Trigger "${message.content}" used by ${message.author.tag}` });
     return true;
   }
   if (action === TRIGGER_ACTIONS.KICK) {
     if (!message.member.permissions.has(PermissionFlagsBits.KickMembers)) return false;
-    await member.kick(`Trigger "طرد" used by ${message.author.tag}`);
+    await member.kick(`Trigger "${message.content}" used by ${message.author.tag}`);
     return true;
   }
   if (action === TRIGGER_ACTIONS.WARN) {
     if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return false;
-    await WarningService.addWarning({ guildId: message.guild.id, userId: member.id, moderatorId: message.author.id, reason: 'Trigger: تحذير' });
+    await WarningService.addWarning({ guildId: message.guild.id, userId: member.id, moderatorId: message.author.id, reason: `Trigger: ${message.content}` });
     return true;
   }
   if (action === TRIGGER_ACTIONS.MUTE) {
     if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return false;
     const muteRole = message.guild.roles.cache.get(MUTE_ROLE_ID) || await message.guild.roles.fetch(MUTE_ROLE_ID).catch(() => null);
     if (!muteRole || muteRole.managed || muteRole.position >= botMember.roles.highest.position) return false;
-    if (!member.roles.cache.has(muteRole.id)) await member.roles.add(muteRole, `Trigger "ميوت" used by ${message.author.tag}`);
+    if (!member.roles.cache.has(muteRole.id)) await member.roles.add(muteRole, `Trigger "${message.content}" used by ${message.author.tag}`);
     return true;
   }
   return false;
