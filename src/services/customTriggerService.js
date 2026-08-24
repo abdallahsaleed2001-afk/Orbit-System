@@ -66,24 +66,26 @@ export async function handleCustomTrigger(message, client) {
   cooldowns.set(cooldownKey, Date.now() + 1500);
 
   try {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels) &&
-        [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE].includes(trigger.action)) return false;
+    const channelActions = [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE];
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels) && channelActions.includes(trigger.action)) return false;
 
     const targetRole = message.guild.roles.cache.get(TARGET_ROLE_ID) || await message.guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
-    if (!targetRole && [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE].includes(trigger.action)) return false;
+    if (!targetRole && channelActions.includes(trigger.action)) return false;
 
     switch (trigger.action) {
       case TRIGGER_ACTIONS.LOCK:
         await message.channel.permissionOverwrites.edit(targetRole, { SendMessages: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
       case TRIGGER_ACTIONS.UNLOCK:
-        await message.channel.permissionOverwrites.edit(targetRole, { SendMessages: null }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+        // Explicitly allow the target role so this also overrides a deny inherited from the category.
+        await message.channel.permissionOverwrites.edit(targetRole, { SendMessages: true }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
       case TRIGGER_ACTIONS.HIDE:
         await message.channel.permissionOverwrites.edit(targetRole, { ViewChannel: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
       case TRIGGER_ACTIONS.UNHIDE:
-        await message.channel.permissionOverwrites.edit(targetRole, { ViewChannel: null }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+        // Explicitly allow the target role instead of clearing the overwrite.
+        await message.channel.permissionOverwrites.edit(targetRole, { ViewChannel: true }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
         break;
       case TRIGGER_ACTIONS.ADD_ROLE:
       case TRIGGER_ACTIONS.REMOVE_ROLE: {
@@ -101,7 +103,6 @@ export async function handleCustomTrigger(message, client) {
         return false;
     }
 
-    // Keep the original message and react to confirm successful execution.
     await message.react('✅').catch(() => {});
     return true;
   } catch (error) {
