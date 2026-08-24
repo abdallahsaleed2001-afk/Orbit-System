@@ -73,8 +73,17 @@ export async function handleCustomTrigger(message, client) {
       const role = message.guild.roles.cache.get(trigger.roleId) || await message.guild.roles.fetch(trigger.roleId).catch(() => null);
       const botMember = message.guild.members.me;
       if (!role || !botMember || role.managed || role.position >= botMember.roles.highest.position) return false;
-      if (trigger.action === TRIGGER_ACTIONS.ADD_ROLE) { if (!message.member.roles.cache.has(role.id)) await message.member.roles.add(role, `Custom trigger "${trigger.trigger}"`); }
-      else if (message.member.roles.cache.has(role.id)) await message.member.roles.remove(role, `Custom trigger "${trigger.trigger}"`);
+
+      const targetMember = await resolveTargetMember(message);
+      if (!targetMember) return false;
+      if (targetMember.id === message.guild.ownerId || targetMember.id === botMember.id) return false;
+      if (targetMember.roles.highest.position >= botMember.roles.highest.position) return false;
+
+      if (trigger.action === TRIGGER_ACTIONS.ADD_ROLE) {
+        if (!targetMember.roles.cache.has(role.id)) await targetMember.roles.add(role, `Custom trigger "${trigger.trigger}"`);
+      } else if (targetMember.roles.cache.has(role.id)) {
+        await targetMember.roles.remove(role, `Custom trigger "${trigger.trigger}"`);
+      }
     } else {
       const success = await executeModerationTrigger(message, trigger.action);
       if (!success) return false;
@@ -90,12 +99,17 @@ export async function handleCustomTrigger(message, client) {
   }
 }
 
-async function executeModerationTrigger(message, action) {
-  const reference = message.reference?.messageId ? await message.channel.messages.fetch(message.reference.messageId).catch(() => null) : null;
+async function resolveTargetMember(message) {
+  const reference = message.reference?.messageId
+    ? await message.channel.messages.fetch(message.reference.messageId).catch(() => null)
+    : null;
   const targetId = reference?.author?.id || message.mentions.users.first()?.id;
-  if (!targetId || targetId === message.author.id || targetId === message.client.user.id) return false;
+  if (!targetId || targetId === message.author.id || targetId === message.client.user.id) return null;
+  return message.guild.members.fetch(targetId).catch(() => null);
+}
 
-  const member = await message.guild.members.fetch(targetId).catch(() => null);
+async function executeModerationTrigger(message, action) {
+  const member = await resolveTargetMember(message);
   if (!member) return false;
   const botMember = message.guild.members.me;
   if (!botMember || member.id === message.guild.ownerId || member.roles.highest.position >= botMember.roles.highest.position) return false;
