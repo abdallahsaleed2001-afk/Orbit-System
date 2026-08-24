@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ChannelSelectMenuBuilder, ChannelType, EmbedBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, ChannelType, EmbedBuilder } from 'discord.js';
 import { getSecurityConfig } from '../../../services/security/securityService.js';
 
 function allowed(interaction) {
@@ -7,9 +7,7 @@ function allowed(interaction) {
 
 function ignoredList(config) {
   const channels = config.ignoredChannels || [];
-  return channels.length
-    ? channels.map(id => `<#${id}>`).join(', ')
-    : '`None`';
+  return channels.length ? channels.map(id => `<#${id}>`).join(', ') : '`None`';
 }
 
 function buildEmbed(guild, config) {
@@ -37,8 +35,10 @@ function components(userId) {
         .setMaxValues(1)
     ),
     new ActionRowBuilder().addComponents(
-      // This uses the existing Security dashboard Logs panel handler.
-      { type: 2, custom_id: `security_panel_logs:${userId}`, label: '← Back to Logs', style: 2 }
+      new ButtonBuilder()
+        .setCustomId(`security_panel_logs:${userId}`)
+        .setLabel('← Back to Logs')
+        .setStyle(ButtonStyle.Secondary)
     ),
   ];
 }
