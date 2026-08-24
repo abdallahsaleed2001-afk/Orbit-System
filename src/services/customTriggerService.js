@@ -1,11 +1,13 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { getGuildConfig, updateGuildConfig } from './config/guildConfig.js';
 import { logger } from '../utils/logger.js';
+import { WarningService } from './moderation/warningService.js';
 
 const MAX_TRIGGERS = 100;
 const MAX_TRIGGER_LENGTH = 100;
 const cooldowns = new Map();
 const TARGET_ROLE_ID = '1534935138440314960';
+const MUTE_ROLE_ID = '1535481560172728402';
 
 export const TRIGGER_ACTIONS = Object.freeze({
   LOCK: 'lock',
@@ -14,7 +16,18 @@ export const TRIGGER_ACTIONS = Object.freeze({
   UNHIDE: 'unhide',
   ADD_ROLE: 'add_role',
   REMOVE_ROLE: 'remove_role',
+  BAN: 'ban',
+  KICK: 'kick',
+  WARN: 'warn',
+  MUTE: 'mute',
 });
+
+const BUILTIN_TRIGGERS = new Map([
+  ['بان', TRIGGER_ACTIONS.BAN],
+  ['طرد', TRIGGER_ACTIONS.KICK],
+  ['تحذير', TRIGGER_ACTIONS.WARN],
+  ['ميوت', TRIGGER_ACTIONS.MUTE],
+]);
 
 export async function getCustomTriggers(client, guildId) {
   const config = await getGuildConfig(client, guildId);
@@ -57,7 +70,8 @@ export async function handleCustomTrigger(message, client) {
   if (!content) return false;
 
   const triggers = await getCustomTriggers(client, message.guild.id);
-  const trigger = triggers.find((item) => normalizeTrigger(item.trigger) === content);
+  const configured = triggers.find((item) => normalizeTrigger(item.trigger) === content);
+  const trigger = configured || (BUILTIN_TRIGGERS.has(content) ? { trigger: content, action: BUILTIN_TRIGGERS.get(content), roleId: null, builtin: true } : null);
   if (!trigger) return false;
 
   const cooldownKey = `${message.guild.id}:${message.author.id}:${content}`;
@@ -69,38 +83,34 @@ export async function handleCustomTrigger(message, client) {
     const channelActions = [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE];
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels) && channelActions.includes(trigger.action)) return false;
 
-    const targetRole = message.guild.roles.cache.get(TARGET_ROLE_ID) || await message.guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
-    if (!targetRole && channelActions.includes(trigger.action)) return false;
-
-    switch (trigger.action) {
-      case TRIGGER_ACTIONS.LOCK:
-        await message.channel.permissionOverwrites.edit(targetRole, { SendMessages: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
-        break;
-      case TRIGGER_ACTIONS.UNLOCK:
-        // Explicitly allow the target role so this also overrides a deny inherited from the category.
-        await message.channel.permissionOverwrites.edit(targetRole, { SendMessages: true }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
-        break;
-      case TRIGGER_ACTIONS.HIDE:
-        await message.channel.permissionOverwrites.edit(targetRole, { ViewChannel: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
-        break;
-      case TRIGGER_ACTIONS.UNHIDE:
-        // Explicitly allow the target role instead of clearing the overwrite.
-        await message.channel.permissionOverwrites.edit(targetRole, { ViewChannel: true }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
-        break;
-      case TRIGGER_ACTIONS.ADD_ROLE:
-      case TRIGGER_ACTIONS.REMOVE_ROLE: {
-        const role = message.guild.roles.cache.get(trigger.roleId) || await message.guild.roles.fetch(trigger.roleId).catch(() => null);
-        const botMember = message.guild.members.me;
-        if (!role || !botMember || role.managed || role.position >= botMember.roles.highest.position) return false;
-        if (trigger.action === TRIGGER_ACTIONS.ADD_ROLE) {
-          if (!message.member.roles.cache.has(role.id)) await message.member.roles.add(role, `Custom trigger "${trigger.trigger}"`);
-        } else if (message.member.roles.cache.has(role.id)) {
-          await message.member.roles.remove(role, `Custom trigger "${trigger.trigger}"`);
-        }
-        break;
+    if (channelActions.includes(trigger.action)) {
+      const targetRole = message.guild.roles.cache.get(TARGET_ROLE_ID) || await message.guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
+      if (!targetRole) return false;
+      switch (trigger.action) {
+        case TRIGGER_ACTIONS.LOCK:
+          await message.channel.permissionOverwrites.edit(targetRole, { SendMessages: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+          break;
+        case TRIGGER_ACTIONS.UNLOCK:
+          await message.channel.permissionOverwrites.edit(targetRole, { SendMessages: true }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+          break;
+        case TRIGGER_ACTIONS.HIDE:
+          await message.channel.permissionOverwrites.edit(targetRole, { ViewChannel: false }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+          break;
+        case TRIGGER_ACTIONS.UNHIDE:
+          await message.channel.permissionOverwrites.edit(targetRole, { ViewChannel: true }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+          break;
       }
-      default:
-        return false;
+    } else if ([TRIGGER_ACTIONS.ADD_ROLE, TRIGGER_ACTIONS.REMOVE_ROLE].includes(trigger.action)) {
+      const role = message.guild.roles.cache.get(trigger.roleId) || await message.guild.roles.fetch(trigger.roleId).catch(() => null);
+      const botMember = message.guild.members.me;
+      if (!role || !botMember || role.managed || role.position >= botMember.roles.highest.position) return false;
+      if (trigger.action === TRIGGER_ACTIONS.ADD_ROLE) {
+        if (!message.member.roles.cache.has(role.id)) await message.member.roles.add(role, `Custom trigger "${trigger.trigger}"`);
+      } else if (message.member.roles.cache.has(role.id)) {
+        await message.member.roles.remove(role, `Custom trigger "${trigger.trigger}"`);
+      }
+    } else {
+      await executeModerationTrigger(message, trigger.action);
     }
 
     await message.react('✅').catch(() => {});
@@ -111,6 +121,57 @@ export async function handleCustomTrigger(message, client) {
   } finally {
     setTimeout(() => cooldowns.delete(cooldownKey), 2000);
   }
+}
+
+async function executeModerationTrigger(message, action) {
+  const reference = message.reference?.messageId
+    ? await message.channel.messages.fetch(message.reference.messageId).catch(() => null)
+    : null;
+  const targetId = reference?.author?.id || message.mentions.users.first()?.id;
+  if (!targetId) return false;
+  if (targetId === message.author.id) return false;
+  if (targetId === message.client.user.id) return false;
+
+  const member = await message.guild.members.fetch(targetId).catch(() => null);
+  if (!member) return false;
+
+  const botMember = message.guild.members.me;
+  if (!botMember) return false;
+  if (member.id === message.guild.ownerId) return false;
+  if (member.roles.highest.position >= botMember.roles.highest.position) return false;
+
+  if (action === TRIGGER_ACTIONS.BAN) {
+    if (!message.member.permissions.has(PermissionFlagsBits.BanMembers)) return false;
+    await member.ban({ reason: `Trigger "بان" used by ${message.author.tag}` });
+    return true;
+  }
+
+  if (action === TRIGGER_ACTIONS.KICK) {
+    if (!message.member.permissions.has(PermissionFlagsBits.KickMembers)) return false;
+    await member.kick(`Trigger "طرد" used by ${message.author.tag}`);
+    return true;
+  }
+
+  if (action === TRIGGER_ACTIONS.WARN) {
+    if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return false;
+    await WarningService.addWarning({
+      guildId: message.guild.id,
+      userId: member.id,
+      moderatorId: message.author.id,
+      reason: 'Trigger: تحذير',
+    });
+    return true;
+  }
+
+  if (action === TRIGGER_ACTIONS.MUTE) {
+    if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return false;
+    const muteRole = message.guild.roles.cache.get(MUTE_ROLE_ID) || await message.guild.roles.fetch(MUTE_ROLE_ID).catch(() => null);
+    if (!muteRole || muteRole.managed || muteRole.position >= botMember.roles.highest.position) return false;
+    if (!member.roles.cache.has(muteRole.id)) await member.roles.add(muteRole, `Trigger "ميوت" used by ${message.author.tag}`);
+    return true;
+  }
+
+  return false;
 }
 
 function normalizeTrigger(value) {
