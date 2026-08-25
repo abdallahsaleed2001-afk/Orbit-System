@@ -73,12 +73,10 @@ export async function handleCustomTrigger(message, client) {
       const role = message.guild.roles.cache.get(trigger.roleId) || await message.guild.roles.fetch(trigger.roleId).catch(() => null);
       const botMember = message.guild.members.me;
       if (!role || !botMember || role.managed || role.position >= botMember.roles.highest.position) return false;
-
       const targetMember = await resolveTargetMember(message);
       if (!targetMember) return false;
       if (targetMember.id === message.guild.ownerId || targetMember.id === botMember.id) return false;
       if (targetMember.roles.highest.position >= botMember.roles.highest.position) return false;
-
       if (trigger.action === TRIGGER_ACTIONS.ADD_ROLE) {
         if (!targetMember.roles.cache.has(role.id)) await targetMember.roles.add(role, `Custom trigger "${trigger.trigger}"`);
       } else if (targetMember.roles.cache.has(role.id)) {
@@ -103,7 +101,7 @@ async function resolveTargetMember(message) {
   const reference = message.reference?.messageId
     ? await message.channel.messages.fetch(message.reference.messageId).catch(() => null)
     : null;
-  const targetId = reference?.author?.id || message.mentions.users.first()?.id;
+  const targetId = message.mentions.users.first()?.id || reference?.author?.id;
   if (!targetId || targetId === message.author.id || targetId === message.client.user.id) return null;
   return message.guild.members.fetch(targetId).catch(() => null);
 }
@@ -126,7 +124,21 @@ async function executeModerationTrigger(message, action) {
   }
   if (action === TRIGGER_ACTIONS.WARN) {
     if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return false;
-    await WarningService.addWarning({ guildId: message.guild.id, userId: member.id, moderatorId: message.author.id, reason: `Trigger: ${message.content}` });
+    const reason = `Trigger: ${message.content}`;
+    const { id, totalCount } = await WarningService.addWarning({
+      guildId: message.guild.id,
+      userId: member.id,
+      moderatorId: message.author.id,
+      reason,
+      timestamp: Date.now(),
+    });
+    logger.info('Custom trigger warning created using shared WarningService', {
+      guildId: message.guild.id,
+      userId: member.id,
+      moderatorId: message.author.id,
+      warningId: id,
+      totalCount,
+    });
     return true;
   }
   if (action === TRIGGER_ACTIONS.MUTE) {
