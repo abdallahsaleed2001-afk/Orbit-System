@@ -15,6 +15,7 @@ import { isCommandEnabled } from '../services/commandAccessService.js';
 import { processAutoMod } from '../services/security/securityService.js';
 import { getStaffData, incrementStaffActivity, recordTicketLog } from '../services/staffService.js';
 import { handleCustomTrigger } from '../services/customTriggerService.js';
+import { handleGameMessage } from '../services/games/gameService.js';
 import {
   getCountingGameConfig,
   saveCountingGameConfig,
@@ -38,6 +39,11 @@ export default {
         await handleTicketClosedLog(message);
         return;
       }
+
+      // Games are handled here instead of a second MessageCreate listener.
+      // This guarantees game answers are processed by the same message pipeline.
+      const gameHandled = await handleGameMessage(message, client);
+      if (gameHandled) return;
 
       await trackStaffMessage(message);
 
