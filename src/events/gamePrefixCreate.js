@@ -11,6 +11,7 @@ const GAME_PREFIX_TYPES = new Map([
 const GAME_LIST = ['-فكك', '-اشبك', '-اسرع', '-اسم', '-حساب', '-رتب', '-ذاكرة', '-مختلف', '-عكس', '-حرف'];
 
 function getTimeoutAnswer(game) {
+  if (game?.type === 'fakk' && game?.display) return [...String(game.display)].join(' ');
   if (game?.display) return game.display;
   if (game?.answer) return game.answer;
   if (game?.type === 'ism' && game.dictionary instanceof Set) {
