@@ -4,7 +4,6 @@ import { getGuildConfig } from '../services/config/guildConfig.js';
 import { getWelcomeConfig, setBirthday as dbSetBirthday } from '../utils/database.js';
 import { formatWelcomeMessage } from '../utils/welcome.js';
 import { logEvent, EVENT_TYPES } from '../services/loggingService.js';
-import { getServerCounters, updateCounter } from '../services/serverstatsService.js';
 import { logger } from '../utils/logger.js';
 
 export default {
@@ -61,11 +60,6 @@ export default {
           quoted: false, thumbnail: user.displayAvatarURL({ dynamic: true }), userId: user.id,
         }});
       } catch (error) { logger.debug('Error logging member join:', error); }
-
-      try {
-        const counters = await getServerCounters(member.client, guild.id);
-        for (const counter of counters) if (counter?.type && counter?.channelId && counter.enabled !== false) await updateCounter(member.client, guild, counter);
-      } catch (error) { logger.debug('Error updating counters on member join:', error); }
 
       try {
         const backupKey = `guild:${guild.id}:birthdays:left`;
