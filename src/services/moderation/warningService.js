@@ -19,11 +19,21 @@ class WarningService {
       await setInDb(key, []);
       throw createError('Corrupted warning data', ErrorTypes.DATABASE, 'Warning data was corrupted and has been reset. Please try again.', { guildId, userId, service: 'warningService', operation: 'addWarning' });
     }
-    const warning = { id: Date.now(), guildId, userId, moderatorId, reason, timestamp, status: 'active' };
+    const warning = { id: Date.now(), guildId, userId, moderatorId, reason, timestamp, status: 'active', caseId: null };
     warnings.push(warning);
     await setInDb(key, warnings);
     logger.info(`Warning added: ${userId} in ${guildId} by ${moderatorId}`);
     return { id: warning.id, totalCount: warnings.length };
+  }
+
+  static async attachCaseId(guildId, userId, warningId, caseId) {
+    const key = getWarningsKey(guildId, userId);
+    const warnings = await getFromDb(key, []);
+    const warning = Array.isArray(warnings) ? warnings.find(w => String(w.id) === String(warningId)) : null;
+    if (!warning) return false;
+    warning.caseId = caseId;
+    await setInDb(key, warnings);
+    return true;
   }
 
   static async getWarnings(guildId, userId) {
@@ -145,10 +155,6 @@ export async function applyWarningEscalation({ guild, member, moderator, warning
   return result;
 }
 
-/**
- * Reconcile warning roles after a warning is removed/appeal is approved.
- * The role always represents the member's current active warning count.
- */
 export async function syncWarningRoles(guild, userId) {
   if (!guild || !userId) return { count: 0, roleId: null };
 
