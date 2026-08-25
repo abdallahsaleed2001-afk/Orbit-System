@@ -8,10 +8,10 @@ export const getGuildBirthdaysKey = (guildId) => `guild:${guildId}:birthdays`;
 export const getBirthdayLeftBackupKey = (guildId) => `guild:${guildId}:birthdays:left`;
 export const getBirthdayTrackingKey = (guildId) => `guild:${guildId}:birthdays:tracking`;
 
-// Legacy ticket-key helpers are retained only for database-facade compatibility.
-// The Ticket feature itself has been removed from the bot.
+// Legacy compatibility only. Ticket and server-status features are removed.
 export const getTicketKey = (guildId, ticketId) => `guild:${guildId}:ticket:${ticketId}`;
 export const getTicketCounterKey = (guildId) => `guild:${guildId}:ticket_counter`;
+export const getServerCountersKey = (guildId) => `guild:${guildId}:counters`;
 
 export const getInviteTrackingKey = (guildId) => `guild:${guildId}:invites`;
 export const getMemberInvitesKey = (guildId, userId) => `guild:${guildId}:invites:${userId}`;
@@ -89,4 +89,3 @@ export function getLegacyVariantsForCanonical(canonicalKey) {
     }
     return variants;
 }
-export const getServerCountersKey = (guildId) => `guild:${guildId}:counters`;
