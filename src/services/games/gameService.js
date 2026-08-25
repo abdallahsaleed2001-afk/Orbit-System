@@ -32,7 +32,7 @@ export function startGame(guildId, channelId, type) {
   let game;
   if (type === 'fakk') {
     const selected = weightedWord(WORDS);
-    game = { type, answer: normalize(selected.word), display: selected.word, difficulty: selected.difficulty, prompt: `🔤 **فكك الكلمة:** \`${selected.word}\`\nاكتبها مفككة مثل: **ش ج ر ة**` };
+    game = { type, answer: normalize(selected.word), display: selected.word, difficulty: selected.difficulty, prompt: `🔤 **فكك الكلمة:** \`${selected.word}\`` };
   } else if (type === 'ashbak') {
     const selected = weightedWord(CONNECT_WORDS);
     game = { type, answer: normalize(selected.word), display: selected.word, difficulty: selected.difficulty, prompt: `🔗 **اشبك الحروف:** \`${[...selected.word].join(' ')}\`\nأول شخص يكتب الكلمة كاملة يفوز!` };
@@ -83,7 +83,7 @@ export async function handleGameMessage(message) {
   if (message.author.bot) return true;
   if (!checkAnswer(game, message.content)) return true;
   cancelGame(message.guild.id, message.channel.id);
-  await message.channel.send(`🏆 **${message.author} فاز!**\nالإجابة: **${game.display || message.content.trim()}**`).catch(() => {});
+  await message.channel.send(`🏆 **${message.author} فاز!**`).catch(() => {});
   return true;
 }
 
