@@ -8,29 +8,37 @@ const GAME_PREFIX_TYPES = new Map([
   ['حساب', 'hisab'], ['رتب', 'ratib'], ['ذاكرة', 'thakira'], ['مختلف', 'mokhtalef'],
   ['عكس', 'aks'], ['حرف', 'harf'],
 ]);
-const ANSWER_GAMES = new Set(['ratib', 'ashbak', 'thakira', 'aks', 'fakk', 'hisab', 'harf', 'mokhtalef']);
-const GAME_LIST = [
-  ['-فكك', 'فكك الكلمة إلى حروف منفصلة.'], ['-اشبك', 'اجمع الحروف واكتب الكلمة الصحيحة.'],
-  ['-اسرع', 'أسرع شخص يكتب الكلمة يفوز.'], ['-اسم', 'اسم بنت أو اسم ولد أو جماد حسب الحرف.'],
-  ['-حساب', 'حل العملية الحسابية بأسرع وقت.'], ['-رتب', 'رتب الحروف لتعرف الكلمة.'],
-  ['-ذاكرة', 'احفظ الرقم واكتبه بعد اختفائه.'], ['-مختلف', 'حدد الكلمة المختلفة.'],
-  ['-عكس', 'اكتب الكلمة بالعكس.'], ['-حرف', 'اكتب كلمة تبدأ بالحرف المطلوب.'],
-];
+const GAME_LIST = ['-فكك', '-اشبك', '-اسرع', '-اسم', '-حساب', '-رتب', '-ذاكرة', '-مختلف', '-عكس', '-حرف'];
 
-function sendTimeout(channel, guildId, channelId) {
-  cancelGame(guildId, channelId);
-  channel.send('⏱️ **انتهت الجولة!** لم يجب أحد في الوقت المحدد.').catch(() => {});
+function getTimeoutAnswer(game) {
+  if (game?.display) return game.display;
+  if (game?.answer) return game.answer;
+  if (game?.type === 'ism' && game.dictionary instanceof Set) {
+    const letter = String(game.answerLetter || '').trim();
+    const match = [...game.dictionary].find((value) => value.startsWith(letter));
+    return match || 'لا توجد إجابة واحدة محددة';
+  }
+  return null;
 }
+
+function sendTimeout(channel, guildId, channelId, game) {
+  const answer = getTimeoutAnswer(game);
+  cancelGame(guildId, channelId);
+  const answerText = answer ? `\n**الاجابة الصحيحة: ${answer}**` : '';
+  channel.send(`⏱️ **انتهت الجولة!** لم يجب أحد في الوقت المحدد.${answerText}`).catch(() => {});
+}
+
 function scheduleTimeout(message, game) {
-  const guildId = message.guild.id, channelId = message.channel.id;
+  const guildId = message.guild.id;
+  const channelId = message.channel.id;
   setTimeout(() => {
     const active = getActiveGame(guildId, channelId);
-    if (active === game) sendTimeout(message.channel, guildId, channelId);
+    if (active === game) sendTimeout(message.channel, guildId, channelId, game);
   }, GAME_TTL_MS);
 }
-function winMessage(message, game) {
-  const winner = `🏆 **${message.author} فاز!**`;
-  return ANSWER_GAMES.has(game.type) ? `${winner}\nالإجابة: **${game.display || message.content.trim()}**` : winner;
+
+function winMessage(message) {
+  return `🏆 **${message.author} فاز!**`;
 }
 
 export default {
@@ -49,14 +57,14 @@ export default {
       }
       if (active && !command && checkAnswer(active, content)) {
         cancelGame(message.guild.id, message.channel.id);
-        await message.channel.send(winMessage(message, active)).catch(() => {});
+        await message.channel.send(winMessage(message)).catch(() => {});
         return;
       }
       if (active && GAME_PREFIX_TYPES.has(command)) return;
 
       if (!content.startsWith('-')) return;
       if (command === 'العاب') {
-        await message.channel.send(`🎮 **الألعاب المتاحة**\n\n${GAME_LIST.map(([n, d]) => `**${n}** — ${d}`).join('\n')}\n\n🛑 **-ايقاف** — إيقاف الجولة الحالية.`).catch(() => {});
+        await message.channel.send(`🎮 **الألعاب المتاحة**\n\n${GAME_LIST.map((name) => `**${name}**`).join('\n')}\n\n🛑 **-ايقاف**`).catch(() => {});
         return;
       }
       if (command === 'ايقاف') {
