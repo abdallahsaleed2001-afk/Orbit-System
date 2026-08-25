@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { getAppeals, reviewAppeal } from '../../../services/moderation/appealService.js';
+import { WarningService, syncWarningRoles } from '../../../services/moderation/warningService.js';
 import { sendSecurityLog } from '../../../services/security/securityService.js';
 
 const button = (id, label, style = ButtonStyle.Secondary) => new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);
@@ -22,7 +23,7 @@ async function renderList(interaction) {
   const appeals = await getAppeals(interaction.guildId, 'pending');
   const components = [new ActionRowBuilder().addComponents(button(`security_back:${interaction.user.id}`, '← Back'))];
   for (let i = 0; i < Math.min(appeals.length, 10); i += 5) {
-    components.push(new ActionRowBuilder().addComponents(...appeals.slice(i, i + 5).map(a => button(`security_appeal_view:${a.id}:${interaction.user.id}`, `#${a.id}` , ButtonStyle.Primary))));
+    components.push(new ActionRowBuilder().addComponents(...appeals.slice(i, i + 5).map(a => button(`security_appeal_view:${a.id}:${interaction.user.id}`, `#${a.id}`, ButtonStyle.Primary))));
   }
   return interaction.update({ embeds: [listEmbed(interaction.guild, appeals)], components });
 }
@@ -47,22 +48,36 @@ async function decide(interaction, client, appealId, status) {
 
   const member = await interaction.guild.members.fetch(appeal.userId).catch(() => null);
   let action = 'No punishment change was required.';
+  let warningReconciled = false;
+
   if (status === 'approved' && member) {
-    if (appeal.type === 'timeout' || appeal.type === 'mute') {
-      if (member.communicationDisabledUntilTimestamp) {
+    if (appeal.type === 'warn' || appeal.type === 'timeout') {
+      const warnings = await WarningService.getWarnings(interaction.guildId, appeal.userId);
+      const warning = warnings.find(w => String(w.caseId) === String(appeal.caseId));
+
+      if (warning) {
+        await WarningService.removeWarning(interaction.guildId, appeal.userId, warning.id);
+        const synced = await syncWarningRoles(interaction.guild, appeal.userId);
+        warningReconciled = true;
+        action = `Warning case #${appeal.caseId} removed. Active warnings: ${synced.count}${synced.roleId ? ` • Role restored to <@&${synced.roleId}>` : ' • No warning role'}.`;
+      }
+
+      if (appeal.type === 'timeout' && member.communicationDisabledUntilTimestamp) {
         await member.timeout(null, `Appeal #${appeal.id} approved by ${interaction.user.tag}`).catch(() => {});
-        action = 'Active timeout removed.';
-      } else if (appeal.type === 'mute') {
-        const muteRole = interaction.guild.roles.cache.get('1535481560172728402');
-        if (muteRole && member.roles.cache.has(muteRole.id)) {
-          await member.roles.remove(muteRole, `Appeal #${appeal.id} approved by ${interaction.user.tag}`).catch(() => {});
-          action = 'Mute role removed.';
-        }
+        action += ' Active timeout removed.';
+      }
+    } else if (appeal.type === 'mute') {
+      const muteRole = interaction.guild.roles.cache.get('1535481560172728402');
+      if (muteRole && member.roles.cache.has(muteRole.id)) {
+        await member.roles.remove(muteRole, `Appeal #${appeal.id} approved by ${interaction.user.tag}`).catch(() => {});
+        action = 'Mute role removed.';
       }
     }
   }
 
   const reviewed = await reviewAppeal(interaction.guildId, appeal.id, status, interaction.user.id, action);
+  if (!reviewed) return interaction.reply({ content: 'Could not update this appeal.', ephemeral: true });
+
   await sendSecurityLog(client, interaction.guild, {
     title: status === 'approved' ? '✅ Appeal Approved' : '❌ Appeal Rejected',
     description: `Appeal **#${appeal.id}** for <@${appeal.userId}> was **${status}** by <@${interaction.user.id}>.`,
@@ -70,6 +85,7 @@ async function decide(interaction, client, appealId, status) {
     fields: [
       { name: 'Case', value: `#${appeal.caseId}`, inline: true },
       { name: 'Type', value: appeal.type, inline: true },
+      { name: 'Warning Reconciled', value: warningReconciled ? 'Yes' : 'No', inline: true },
       { name: 'Action', value: action, inline: false },
     ],
   }).catch(() => {});
