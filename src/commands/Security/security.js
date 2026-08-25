@@ -29,6 +29,7 @@ const MAIN_BUTTONS = [
   ['security_panel_whitelist', '👤 Whitelist', ButtonStyle.Secondary],
   ['security_panel_logs', '📋 Logs', ButtonStyle.Secondary],
   ['security_panel_settings', '⚙️ Settings', ButtonStyle.Secondary],
+  ['security_panel_appeals', '📨 Appeals', ButtonStyle.Primary],
 ];
 
 const NUKE_LABELS = { channelDelete: 'Channel Del', channelCreate: 'Channel Add', roleDelete: 'Role Del', roleCreate: 'Role Add', roleUpdate: 'Role Edit', webhookUpdate: 'Webhook Edit', webhookDelete: 'Webhook Del', ban: 'Ban', kick: 'Kick', botAdd: 'Bot Add' };
@@ -64,7 +65,8 @@ export function buildSecurityDashboard(config, guild) {
 export function buildSecurityControls(userId) {
   return [
     new ActionRowBuilder().addComponents(...MAIN_BUTTONS.slice(0, 4).map(([id, label, style]) => button(`${id}:${userId}`, label, style))),
-    new ActionRowBuilder().addComponents(...MAIN_BUTTONS.slice(4).map(([id, label, style]) => button(`${id}:${userId}`, label, style)), button(`security_refresh:${userId}`, '🔄 Refresh', ButtonStyle.Success)),
+    new ActionRowBuilder().addComponents(...MAIN_BUTTONS.slice(4, 8).map(([id, label, style]) => button(`${id}:${userId}`, label, style))),
+    new ActionRowBuilder().addComponents(button(`security_panel_appeals:${userId}`, '📨 Appeals', ButtonStyle.Primary), button(`security_refresh:${userId}`, '🔄 Refresh', ButtonStyle.Success)),
   ];
 }
 
