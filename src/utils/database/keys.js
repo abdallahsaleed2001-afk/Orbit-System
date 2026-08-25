@@ -89,3 +89,4 @@ export function getLegacyVariantsForCanonical(canonicalKey) {
     }
     return variants;
 }
+export const getServerCountersKey = (guildId) => `guild:${guildId}:counters`;
