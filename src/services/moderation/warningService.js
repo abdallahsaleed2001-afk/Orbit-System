@@ -38,7 +38,7 @@ class WarningService {
   static async removeWarning(guildId, userId, warningId) {
     const key = getWarningsKey(guildId, userId);
     const warnings = await getFromDb(key, []);
-    const index = warnings.findIndex(w => w.id === warningId);
+    const index = warnings.findIndex(w => String(w.id) === String(warningId));
     if (index === -1) throw createError('Warning not found', ErrorTypes.USER_INPUT, 'That warning could not be found. It may have already been removed.', { guildId, userId, warningId, service: 'warningService', operation: 'removeWarning' });
     warnings[index].status = 'deleted';
     await setInDb(key, warnings);
@@ -91,7 +91,6 @@ export async function applyWarningEscalation({ guild, member, moderator, warning
   const warningRoleIds = Object.values(WARNING_ROLES);
   const result = { level: warningCount, action: 'none', roleId: null, caseId: null };
 
-  // Warnings 1-3: keep exactly the role matching the current warning level.
   if (warningCount <= 3) {
     const roleId = WARNING_ROLES[warningCount];
     const role = guild.roles.cache.get(roleId) || await guild.roles.fetch(roleId).catch(() => null);
@@ -121,7 +120,6 @@ export async function applyWarningEscalation({ guild, member, moderator, warning
     return result;
   }
 
-  // Warning 4: one-day timeout.
   if (warningCount === 4) {
     if (!member.moderatable) {
       logger.warn(`Cannot timeout member for warning escalation: ${member.id}`);
@@ -134,7 +132,6 @@ export async function applyWarningEscalation({ guild, member, moderator, warning
     return result;
   }
 
-  // Warning 5+: kick the member.
   if (warningCount >= 5) {
     if (!member.kickable) {
       logger.warn(`Cannot kick member for warning escalation: ${member.id}`);
@@ -146,6 +143,41 @@ export async function applyWarningEscalation({ guild, member, moderator, warning
   }
 
   return result;
+}
+
+/**
+ * Reconcile warning roles after a warning is removed/appeal is approved.
+ * The role always represents the member's current active warning count.
+ */
+export async function syncWarningRoles(guild, userId) {
+  if (!guild || !userId) return { count: 0, roleId: null };
+
+  const member = guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
+  if (!member) return { count: 0, roleId: null };
+
+  const botMember = guild.members.me;
+  if (!botMember) return { count: 0, roleId: null };
+
+  const warnings = await WarningService.getWarnings(guild.id, userId);
+  const count = warnings.length;
+  const desiredRoleId = count >= 1 && count <= 3 ? WARNING_ROLES[count] : null;
+
+  for (const roleId of Object.values(WARNING_ROLES)) {
+    if (!member.roles.cache.has(roleId)) continue;
+    const role = guild.roles.cache.get(roleId);
+    if (role && role.position < botMember.roles.highest.position && roleId !== desiredRoleId) {
+      await member.roles.remove(role, 'Warning appeal approved / warning role reconciliation').catch(() => {});
+    }
+  }
+
+  if (desiredRoleId && !member.roles.cache.has(desiredRoleId)) {
+    const role = guild.roles.cache.get(desiredRoleId) || await guild.roles.fetch(desiredRoleId).catch(() => null);
+    if (role && role.position < botMember.roles.highest.position) {
+      await member.roles.add(role, 'Warning role reconciliation').catch(() => {});
+    }
+  }
+
+  return { count, roleId: desiredRoleId };
 }
 
 wrapServiceClassMethods(WarningService);
