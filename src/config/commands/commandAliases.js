@@ -23,7 +23,7 @@ export const commandAliases = {
     'jtc': 'jointocreate', 'jointocreate': 'jointocreate',
     'np': 'nowplaying', 'now': 'nowplaying',
 
-    'فكك': 'games', 'اشبك': 'games', 'اسرع': 'games', 'اسم': 'games', 'حساب': 'games', 'رتب': 'games', 'ذاكرة': 'games', 'مختلف': 'games', 'عكس': 'games', 'حرف': 'games',
+    'فكك': 'fakk', 'اشبك': 'ashbak', 'اسرع': 'asra', 'اسم': 'ism', 'حساب': 'hisab', 'رتب': 'ratib', 'ذاكرة': 'thakira', 'مختلف': 'mokhtalef', 'عكس': 'aks', 'حرف': 'harf',
 };
 
 export const subcommandAliases = {
@@ -32,12 +32,5 @@ export const subcommandAliases = {
     'start': 'create', 'stop': 'end', 'roll': 'reroll',
     'add': 'add', 'remove': 'remove', 'list': 'list',
 };
-
-export function resolveCommandAlias(commandName) {
-    const normalized = commandName.toLowerCase();
-    return commandAliases[normalized] || commandName;
-}
-export function resolveSubcommandAlias(subcommandName) {
-    const normalized = subcommandName.toLowerCase();
-    return subcommandAliases[normalized] || subcommandName;
-}
+export function resolveCommandAlias(commandName) { return commandAliases[commandName.toLowerCase()] || commandName; }
+export function resolveSubcommandAlias(subcommandName) { return subcommandAliases[subcommandName.toLowerCase()] || subcommandName; }
