@@ -16,7 +16,7 @@ function hasDangerousPermission(role) {
 }
 
 export default {
-  name: Events.RoleUpdate,
+  name: Events.GuildRoleUpdate,
   async execute(oldRole, newRole) {
     if (!newRole?.guild) return;
     if (!hasDangerousPermission(oldRole) && hasDangerousPermission(newRole)) {
