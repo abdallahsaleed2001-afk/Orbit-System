@@ -12,7 +12,8 @@ const MUTE_ROLE_ID = '1535481560172728402';
 
 export const TRIGGER_ACTIONS = Object.freeze({
   LOCK: 'lock', UNLOCK: 'unlock', HIDE: 'hide', UNHIDE: 'unhide',
-  ADD_ROLE: 'add_role', REMOVE_ROLE: 'remove_role', BAN: 'ban', KICK: 'kick', WARN: 'warn', MUTE: 'mute', TIMEOUT: 'timeout',
+  ADD_ROLE: 'add_role', REMOVE_ROLE: 'remove_role', ADD_MEMBER: 'add_member',
+  BAN: 'ban', KICK: 'kick', WARN: 'warn', MUTE: 'mute', TIMEOUT: 'timeout',
 });
 
 export async function getCustomTriggers(client, guildId) {
@@ -48,11 +49,20 @@ export async function handleCustomTrigger(message, client) {
   if (!message.guild || message.author.bot) return false;
   const content = normalizeTrigger(message.content);
   if (!content) return false;
+
   const triggers = await getCustomTriggers(client, message.guild.id);
-  const trigger = triggers.find((item) => normalizeTrigger(item.trigger) === content);
+  const trigger = triggers.find((item) => {
+    const configured = normalizeTrigger(item.trigger);
+    if (item.action === TRIGGER_ACTIONS.ADD_MEMBER) {
+      // ADD_MEMBER intentionally accepts one argument (mention or numeric ID).
+      // The trigger itself must still be an exact prefix: "اضافة @user" works, "-اضافة @user" does not.
+      return content.startsWith(`${configured} `);
+    }
+    return configured === content;
+  });
   if (!trigger) return false;
 
-  const cooldownKey = `${message.guild.id}:${message.author.id}:${content}`;
+  const cooldownKey = `${message.guild.id}:${message.author.id}:${trigger.trigger}`;
   if ((cooldowns.get(cooldownKey) || 0) > Date.now()) return true;
   cooldowns.set(cooldownKey, Date.now() + 1500);
 
@@ -60,7 +70,10 @@ export async function handleCustomTrigger(message, client) {
     const channelActions = [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE];
     if (channelActions.includes(trigger.action) && !message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return false;
 
-    if (channelActions.includes(trigger.action)) {
+    if (trigger.action === TRIGGER_ACTIONS.ADD_MEMBER) {
+      const success = await addMemberToCurrentChannel(message, trigger);
+      if (!success) return false;
+    } else if (channelActions.includes(trigger.action)) {
       const targetRole = message.guild.roles.cache.get(TARGET_ROLE_ID) || await message.guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
       if (!targetRole) return false;
       const reason = `Custom trigger "${trigger.trigger}" used by ${message.author.tag}`;
@@ -94,6 +107,48 @@ export async function handleCustomTrigger(message, client) {
   } finally {
     setTimeout(() => cooldowns.delete(cooldownKey), 2000);
   }
+}
+
+async function addMemberToCurrentChannel(message, trigger) {
+  if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return false;
+
+  const configured = normalizeTrigger(trigger.trigger);
+  const argument = String(message.content).trim().slice(configured.length).trim();
+  if (!argument || argument.includes(' ')) return false;
+
+  const mentionMatch = argument.match(/^<@!?(\d{17,20})>$/);
+  const idMatch = argument.match(/^(\d{17,20})$/);
+  const userId = mentionMatch?.[1] || idMatch?.[1];
+  if (!userId) return false;
+
+  const member = await message.guild.members.fetch(userId).catch(() => null);
+  if (!member || member.user.bot) return false;
+
+  const botMember = message.guild.members.me;
+  if (!botMember || !message.channel.permissionsFor(botMember).has(PermissionFlagsBits.ManageChannels)) return false;
+
+  const existing = message.channel.permissionOverwrites.cache.get(member.id);
+  if (existing?.allow?.has(PermissionFlagsBits.ViewChannel)) return false;
+
+  await message.channel.permissionOverwrites.edit(member, {
+    ViewChannel: true,
+    SendMessages: true,
+    ReadMessageHistory: true,
+  }, { reason: `Custom trigger "${trigger.trigger}" used by ${message.author.tag}` });
+
+  await logModerationAction({
+    client: message.client,
+    guild: message.guild,
+    event: {
+      action: 'Member Added To Channel',
+      target: `${member.user.tag} (${member.id})`,
+      executor: `${message.author.tag} (${message.author.id})`,
+      reason: `Trigger: ${trigger.trigger}`,
+      metadata: { userId: member.id, moderatorId: message.author.id, channelId: message.channel.id },
+    },
+  });
+
+  return true;
 }
 
 async function resolveTargetMember(message) {
