@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRouletteTarget, finishRouletteAction, getRoulette, getWinner, isParticipant, isSelected, removeRoulettePlayer, cancelRoulette } from '../../../services/games/rouletteService.js';
+import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRouletteTarget, finishRouletteAction, getRoulette, getRoulettePlayerStats, getWinner, isParticipant, isSelected, removeRoulettePlayer, cancelRoulette, recordRouletteElimination, recordRouletteWinner } from '../../../services/games/rouletteService.js';
 
 const spinTimers = new Map();
 
@@ -23,6 +23,7 @@ function buildRows(game) {
   rows.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`roulette_leave:${game.id}`).setLabel('انسحب').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`roulette_random:${game.id}`).setLabel('اطرد شخصًا عشوائيًا').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`roulette_stats:${game.id}`).setLabel('إحصائيات اللاعب').setStyle(ButtonStyle.Primary),
   ));
   return rows.slice(0, 5);
 }
@@ -60,6 +61,11 @@ export async function spinRound(message, game) {
   spinTimers.set(timerKey, timer);
 }
 
+function statsText(user, stats) {
+  const winRate = stats.rounds ? ((stats.wins / stats.rounds) * 100).toFixed(1) : '0.0';
+  return `إحصائيات ${user}\n\nالجولات: **${stats.rounds}**\nالفوز: **${stats.wins}**\nالخسائر: **${stats.losses}**\nالإقصاءات: **${stats.eliminations}**\nنسبة الفوز: **${winRate}%**`;
+}
+
 export async function handleRouletteButton(interaction, client, args) {
   const action = interaction.customId.split(':')[0].replace('roulette_', '');
   const gameId = args[0];
@@ -81,15 +87,30 @@ export async function handleRouletteButton(interaction, client, args) {
     await interaction.update({ content: 'تم إيقاف الروليت.', components: [] });
     return;
   }
+  if (action === 'stats') {
+    if (!isParticipant(game, interaction.user.id)) return interaction.reply({ content: 'إحصائيات الروليت متاحة للمشاركين فقط.', ephemeral: true });
+    const stats = getRoulettePlayerStats(interaction.guildId, interaction.user.id);
+    return interaction.reply({ content: statsText(interaction.user, stats), ephemeral: true });
+  }
   if (!isSelected(game, interaction.user.id)) return interaction.reply({ content: 'الدور ليس لك.', ephemeral: true });
+
+  let eliminatedId = null;
   if (action === 'target') {
     if (!targetId || targetId === interaction.user.id) return interaction.reply({ content: 'اختر شخصًا آخر من القائمة.', ephemeral: true });
     if (!chooseRouletteTarget(game, targetId)) return interaction.reply({ content: 'هذا الشخص لم يعد في الجولة.', ephemeral: true });
-  } else if (action === 'leave') removeRoulettePlayer(game, interaction.user.id);
-  else if (action === 'random') chooseRandomTarget(game, interaction.user.id);
+    eliminatedId = targetId;
+  } else if (action === 'leave') {
+    removeRoulettePlayer(game, interaction.user.id);
+  } else if (action === 'random') {
+    const target = chooseRandomTarget(game, interaction.user.id);
+    if (target) eliminatedId = target.id;
+  }
+
+  if (eliminatedId) recordRouletteElimination(game.guildId, eliminatedId);
   finishRouletteAction(game);
   if (game.phase === 'finished') {
     const winner = getWinner(game);
+    if (winner) recordRouletteWinner(game.guildId, winner.id);
     cancelRoulette(game.guildId, game.channelId);
     await interaction.update({ content: `الفائز في الروليت: <@${winner.id}>`, components: [] });
     return;
@@ -104,4 +125,5 @@ export default [
   { name: 'roulette_target', execute: handleRouletteButton },
   { name: 'roulette_leave', execute: handleRouletteButton },
   { name: 'roulette_random', execute: handleRouletteButton },
+  { name: 'roulette_stats', execute: handleRouletteButton },
 ];
