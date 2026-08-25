@@ -1,5 +1,7 @@
 import { Events } from 'discord.js';
 import { cancelGame, checkAnswer, getActiveGame, startGame } from '../services/games/gameService.js';
+import { createRoulette, getRoulette, cancelRoulette } from '../services/games/rouletteService.js';
+import { sendJoinMessage } from '../interactions/buttons/roulette/roulette.js';
 import { logger } from '../utils/logger.js';
 
 const GAME_TTL_MS = 20_000;
@@ -8,7 +10,7 @@ const GAME_PREFIX_TYPES = new Map([
   ['حساب', 'hisab'], ['رتب', 'ratib'], ['ذاكرة', 'thakira'], ['مختلف', 'mokhtalef'],
   ['عكس', 'aks'], ['حرف', 'harf'],
 ]);
-const GAME_LIST = ['-فكك', '-اشبك', '-اسرع', '-اسم', '-حساب', '-رتب', '-ذاكرة', '-مختلف', '-عكس', '-حرف'];
+const GAME_LIST = ['-فكك', '-اشبك', '-اسرع', '-اسم', '-حساب', '-رتب', '-ذاكرة', '-مختلف', '-عكس', '-حرف', '-روليت'];
 
 function getTimeoutAnswer(game) {
   if (game?.type === 'fakk' && game?.display) return [...String(game.display)].join(' ');
@@ -38,9 +40,7 @@ function scheduleTimeout(message, game) {
   }, GAME_TTL_MS);
 }
 
-function winMessage(message) {
-  return `🏆 **${message.author} فاز!**`;
-}
+function winMessage(message) { return `🏆 **${message.author} فاز!**`; }
 
 export default {
   name: Events.MessageCreate,
@@ -49,8 +49,30 @@ export default {
       if (!message.guild || message.author.bot) return;
       const content = String(message.content ?? '').trim();
       const command = content.startsWith('-') ? content.slice(1).trim().split(/\s+/)[0]?.toLowerCase() : '';
-      const active = getActiveGame(message.guild.id, message.channel.id);
+      const roulette = getRoulette(message.guild.id, message.channel.id);
 
+      if (roulette && command === 'ايقاف') {
+        cancelRoulette(message.guild.id, message.channel.id);
+        await message.channel.send('🛑 **تم إيقاف الروليت.**').catch(() => {});
+        return;
+      }
+
+      if (command === 'روليت') {
+        if (roulette) {
+          await message.channel.send('⚠️ توجد جولة روليت نشطة بالفعل في هذه القناة.').catch(() => {});
+          return;
+        }
+        if (getActiveGame(message.guild.id, message.channel.id)) {
+          await message.channel.send('⚠️ توجد لعبة نشطة بالفعل في هذه القناة.').catch(() => {});
+          return;
+        }
+        const created = createRoulette(message.guild.id, message.channel.id, message.author);
+        if (created.error) return;
+        await sendJoinMessage(message, created.game);
+        return;
+      }
+
+      const active = getActiveGame(message.guild.id, message.channel.id);
       if (active && command === 'ايقاف') {
         cancelGame(message.guild.id, message.channel.id);
         await message.channel.send('🛑 **تم إيقاف الجولة.**').catch(() => {});
@@ -85,9 +107,7 @@ export default {
       scheduleTimeout(message, game);
       if (type === 'thakira') {
         setTimeout(() => {
-          if (getActiveGame(message.guild.id, message.channel.id) === game) {
-            message.channel.send('🧠 **انتهى وقت الحفظ — اكتب الرقم الذي رأيته!**').catch(() => {});
-          }
+          if (getActiveGame(message.guild.id, message.channel.id) === game) message.channel.send('🧠 **انتهى وقت الحفظ — اكتب الرقم الذي رأيته!**').catch(() => {});
         }, 2000);
       }
     } catch (error) {
