@@ -1,27 +1,19 @@
-import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType, MessageFlags } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { successEmbed } from '../../utils/embeds.js';
 import { logModerationAction } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
 import { WarningService } from '../../services/moderation/warningService.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
 import { TitanBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { sendPunishmentDM } from '../../services/moderation/punishmentDM.js';
+
 export default {
     data: new SlashCommandBuilder()
         .setName("warn")
         .setDescription("Warn a user")
-        .addUserOption((o) =>
-            o
-                .setName("target")
-                .setRequired(true)
-                .setDescription("User to warn"),
-        )
-        .addStringOption((o) =>
-            o
-                .setName("reason")
-                .setRequired(true)
-                .setDescription("Reason for the warning"),
-        )
+        .addUserOption((o) => o.setName("target").setRequired(true).setDescription("User to warn"))
+        .addStringOption((o) => o.setName("reason").setRequired(true).setDescription("Reason for the warning"))
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
     category: "moderation",
 
@@ -42,31 +34,9 @@ export default {
         const moderator = interaction.user;
         const guildId = interaction.guildId;
 
-        if (!target) {
-            throw new TitanBotError(
-                'Missing target user',
-                ErrorTypes.USER_INPUT,
-                'You must specify a user to warn.',
-                { subtype: 'invalid_user' },
-            );
-        }
-
-        if (!reason) {
-            throw new TitanBotError(
-                'Missing warning reason',
-                ErrorTypes.VALIDATION,
-                'You must provide a reason for the warning.',
-                { subtype: 'missing_required' },
-            );
-        }
-
-        if (!member) {
-            throw new TitanBotError(
-                "Target not found",
-                ErrorTypes.USER_INPUT,
-                "The target user is not currently in this server."
-            );
-        }
+        if (!target) throw new TitanBotError('Missing target user', ErrorTypes.USER_INPUT, 'You must specify a user to warn.', { subtype: 'invalid_user' });
+        if (!reason) throw new TitanBotError('Missing warning reason', ErrorTypes.VALIDATION, 'You must provide a reason for the warning.', { subtype: 'missing_required' });
+        if (!member) throw new TitanBotError("Target not found", ErrorTypes.USER_INPUT, "The target user is not currently in this server.");
 
         ModerationService.assertModerationHierarchy(interaction.member, member, 'warn');
 
@@ -78,7 +48,7 @@ export default {
             timestamp: Date.now()
         });
 
-        await logModerationAction({
+        const caseId = await logModerationAction({
             client,
             guild: interaction.guild,
             event: {
@@ -96,13 +66,16 @@ export default {
             }
         });
 
+        await sendPunishmentDM({
+            user: target,
+            guild: interaction.guild,
+            type: 'warn',
+            reason,
+            caseId,
+        });
+
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [
-                successEmbed(
-                    `⚠️ **Warned** ${target.tag}`,
-                    `**Reason:** ${reason}\n**Total Warns:** ${totalCount}`,
-                ),
-            ],
+            embeds: [successEmbed(`⚠️ **Warned** ${target.tag}`, `**Reason:** ${reason}\n**Total Warns:** ${totalCount}\n**Case:** #${caseId}`)],
         });
     }
 };
