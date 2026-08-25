@@ -58,6 +58,7 @@ export default {
                 }
             }
         });
+        await WarningService.attachCaseId(guildId, target.id, id, caseId);
 
         await sendPunishmentDM({
             user: target,
