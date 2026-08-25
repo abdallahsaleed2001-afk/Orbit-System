@@ -1,6 +1,4 @@
 import { Events } from 'discord.js';
-import { getCommandPrefix } from '../config/bot.js';
-import { getGuildConfig } from '../services/config/guildConfig.js';
 import { startGame } from '../services/games/gameService.js';
 import { logger } from '../utils/logger.js';
 
@@ -19,16 +17,15 @@ const GAME_PREFIXES = new Map([
 
 export default {
   name: Events.MessageCreate,
-  async execute(message, client) {
+  async execute(message) {
     try {
       if (!message.guild || message.author.bot) return;
 
-      const config = await getGuildConfig(client, message.guild.id);
-      const prefix = String(config?.prefix || getCommandPrefix() || '-');
+      // Game commands intentionally use the fixed '-' prefix.
       const content = String(message.content || '').trim();
-      if (!content.startsWith(prefix)) return;
+      if (!content.startsWith('-')) return;
 
-      const commandName = content.slice(prefix.length).trim().split(/\s+/)[0]?.toLowerCase();
+      const commandName = content.slice(1).trim().split(/\s+/)[0]?.toLowerCase();
       const type = GAME_PREFIXES.get(commandName);
       if (!type) return;
 
@@ -39,16 +36,19 @@ export default {
         return;
       }
 
-      if (result?.error || !result?.prompt) return;
+      if (result?.error || !result?.prompt) {
+        logger.warn(`Game ${commandName} did not return a prompt.`);
+        return;
+      }
 
-      const prompt = await message.channel.send(result.prompt).catch((error) => {
+      const prompt = await message.channel.send({ content: result.prompt }).catch((error) => {
         logger.error('Failed to send game prompt:', error);
         return null;
       });
 
       if (prompt && type === 'thakira') {
         setTimeout(() => {
-          prompt.edit('🧠 **ذاكرة!**\n⏳ انتهى وقت الحفظ — اكتب الرقم الذي رأيته!').catch(() => {});
+          prompt.edit({ content: '🧠 **ذاكرة!**\n⏳ انتهى وقت الحفظ — اكتب الرقم الذي رأيته!' }).catch(() => {});
         }, 2000);
       }
     } catch (error) {
