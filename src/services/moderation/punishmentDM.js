@@ -14,15 +14,19 @@ export async function sendPunishmentDM({ user, guild, type, duration = null, rea
   }
 
   try {
-    const label = type === 'mute' ? '🔇 Mute' : '⏳ Timeout';
-    const actionText = type === 'mute' ? 'Muted' : 'Timed Out';
-    const durationText = duration ? `\n**Duration:** ${duration}` : '\n**Duration:** Permanent';
+    const labels = {
+      mute: { label: '🔇 Mute', action: 'muted' },
+      timeout: { label: '⏳ Timeout', action: 'timed out' },
+      warn: { label: '⚠️ Warning', action: 'warned' },
+    };
+    const punishment = labels[type] || labels.warn;
+    const durationText = duration ? `\n**Duration:** ${duration}` : '';
 
     const embed = new EmbedBuilder()
-      .setColor(0xed4245)
-      .setTitle(`${label} Applied`)
+      .setColor(type === 'warn' ? 0xfee75c : 0xed4245)
+      .setTitle(`${punishment.label} Applied`)
       .setDescription(
-        `You have been **${actionText.toLowerCase()}** in **${guild.name}**.` +
+        `You have been **${punishment.action}** in **${guild.name}**.` +
         `${durationText}\n\n**Reason:** ${reason}\n**Case:** #${caseId || '—'}`
       )
       .setFooter({ text: 'If you believe this punishment was issued incorrectly, you can appeal below.' });
