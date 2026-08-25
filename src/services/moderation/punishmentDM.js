@@ -30,7 +30,7 @@ export async function sendPunishmentDM({ user, guild, type, duration = null, rea
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`moderation_appeal:${guild.id}:${caseId || '0'}:${type}`)
-        .setLabel('Appeal / اعتراض')
+        .setLabel('📨 تقديم اعتراض')
         .setStyle(ButtonStyle.Primary)
     );
 
