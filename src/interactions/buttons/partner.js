@@ -1,6 +1,8 @@
 import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } from 'discord.js';
 import { getPartnerData, savePartnerData, applicationEmbed, applicationButtons } from '../../utils/partner.js';
 
+const PARTNER_ROLE_ID = '1539919411731890216';
+
 async function renderApplications(interaction, filter) {
   const data = await getPartnerData(interaction.client, interaction.guildId);
   const items = filter === 'active' ? data.partners.filter(p => p.status === 'active') : data.applications.filter(a => a.status === 'pending');
@@ -57,12 +59,22 @@ async function review(interaction, client, id, status) {
   const channel = interaction.guild.channels.cache.get(data.requestChannelId);
   const message = channel ? await channel.messages.fetch(app.messageId).catch(() => null) : null;
   if (message) await message.edit({ embeds: [applicationEmbed(app)], components: applicationButtons(app) });
-  if (status === 'accepted' && data.announcementChannelId) {
-    const announcementChannel = interaction.guild.channels.cache.get(data.announcementChannelId);
-    if (announcementChannel?.isTextBased()) {
-      const text = `🤝 **شراكة جديدة**\n\n**${app.serverName}**\n\n${app.description}\n\n${app.invite}\n\n@everyone @here`;
-      await announcementChannel.send({ content: text, allowedMentions: { parse: ['everyone'] } });
+  if (status === 'accepted') {
+    const member = await interaction.guild.members.fetch(app.applicantId).catch(() => null);
+    const partnerRole = await interaction.guild.roles.fetch(PARTNER_ROLE_ID).catch(() => null);
+    if (member && partnerRole) {
+      const botMember = interaction.guild.members.me;
+      if (botMember && partnerRole.position < botMember.roles.highest.position && !partnerRole.managed) {
+        await member.roles.add(partnerRole, `Partner application #${app.id} accepted by ${interaction.user.tag}`);
+      }
+    }
+    if (data.announcementChannelId) {
+      const announcementChannel = interaction.guild.channels.cache.get(data.announcementChannelId);
+      if (announcementChannel?.isTextBased()) {
+        const text = `🤝 **شراكة جديدة**\n\n**${app.serverName}**\n\n${app.description}\n\n${app.invite}\n\n@everyone @here`;
+        await announcementChannel.send({ content: text, allowedMentions: { parse: ['everyone'] } });
+      }
     }
   }
-  return interaction.followUp({ content: status === 'accepted' ? `✅ تم قبول طلب الشراكة #${app.id} ونشر الإعلان.` : `✅ تم رفض طلب الشراكة #${app.id}.`, ephemeral: true });
+  return interaction.followUp({ content: status === 'accepted' ? `✅ تم قبول طلب الشراكة #${app.id} وإعطاء رتبة الشريك.` : `✅ تم رفض طلب الشراكة #${app.id}.`, ephemeral: true });
 }
