@@ -4,6 +4,12 @@ import { db, getFromDb, setInDb, getWarningsKey, getWarningsPrefix } from '../..
 import { logger } from '../../utils/logger.js';
 import { createError, ErrorTypes, wrapServiceClassMethods } from '../../utils/errorHandler.js';
 
+export const WARNING_ROLES = Object.freeze({
+  1: '1534937998561644624',
+  2: '1534938090571829442',
+  3: '1534938171551387799',
+});
+
 class WarningService {
   static async addWarning({ guildId, userId, moderatorId, reason, timestamp = Date.now() }) {
     const key = getWarningsKey(guildId, userId);
@@ -37,7 +43,7 @@ class WarningService {
     warnings[index].status = 'deleted';
     await setInDb(key, warnings);
     logger.info(`Warning removed: ${warningId} for ${userId} in ${guildId}`);
-    return { removed: true };
+    return { removed: true, warning: warnings[index] };
   }
 
   static async clearWarnings(guildId, userId) {
@@ -50,8 +56,6 @@ class WarningService {
   }
 
   static async getGuildWarnings(guildId, filters = {}, legacyFilters = undefined) {
-    // Supports both getGuildWarnings(guildId, filters) and the accidental
-    // getGuildWarnings(client, guildId, filters) call used by older integrations.
     if (typeof guildId === 'object' && typeof filters === 'string') {
       guildId = filters;
       filters = legacyFilters || {};
@@ -76,6 +80,72 @@ class WarningService {
     logger.debug(`Fetched guild warnings for ${guildId} with ${allWarnings.length} total`);
     return allWarnings.slice(0, limit);
   }
+}
+
+export async function applyWarningEscalation({ guild, member, moderator, warningCount, reason, client }) {
+  if (!guild || !member || !moderator || !warningCount) return { level: warningCount, action: 'none' };
+
+  const botMember = guild.members.me;
+  if (!botMember) return { level: warningCount, action: 'none' };
+
+  const warningRoleIds = Object.values(WARNING_ROLES);
+  const result = { level: warningCount, action: 'none', roleId: null, caseId: null };
+
+  // Warnings 1-3: keep exactly the role matching the current warning level.
+  if (warningCount <= 3) {
+    const roleId = WARNING_ROLES[warningCount];
+    const role = guild.roles.cache.get(roleId) || await guild.roles.fetch(roleId).catch(() => null);
+    if (!role) {
+      logger.warn(`Warning role ${roleId} not found in ${guild.id}`);
+      return result;
+    }
+
+    for (const oldRoleId of warningRoleIds) {
+      if (oldRoleId === roleId || !member.roles.cache.has(oldRoleId)) continue;
+      const oldRole = guild.roles.cache.get(oldRoleId);
+      if (oldRole && oldRole.position < botMember.roles.highest.position) {
+        await member.roles.remove(oldRole, `Warning escalation: ${warningCount} active warnings`).catch(() => {});
+      }
+    }
+
+    if (!member.roles.cache.has(roleId)) {
+      if (role.position >= botMember.roles.highest.position) {
+        logger.warn(`Warning role ${roleId} is above the bot role in ${guild.id}`);
+        return result;
+      }
+      await member.roles.add(role, `Warning escalation: warning ${warningCount}`);
+    }
+
+    result.action = 'warning_role';
+    result.roleId = roleId;
+    return result;
+  }
+
+  // Warning 4: one-day timeout.
+  if (warningCount === 4) {
+    if (!member.moderatable) {
+      logger.warn(`Cannot timeout member for warning escalation: ${member.id}`);
+      return result;
+    }
+    const durationMs = 24 * 60 * 60 * 1000;
+    await member.timeout(durationMs, `Warning escalation #4: ${reason || '4 active warnings'}`);
+    result.action = 'timeout';
+    result.durationMs = durationMs;
+    return result;
+  }
+
+  // Warning 5+: kick the member.
+  if (warningCount >= 5) {
+    if (!member.kickable) {
+      logger.warn(`Cannot kick member for warning escalation: ${member.id}`);
+      return result;
+    }
+    await member.kick(`Warning escalation #${warningCount}: ${reason || '5+ active warnings'}`);
+    result.action = 'kick';
+    return result;
+  }
+
+  return result;
 }
 
 wrapServiceClassMethods(WarningService);
