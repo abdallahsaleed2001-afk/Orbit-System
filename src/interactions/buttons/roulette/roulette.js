@@ -5,10 +5,7 @@ const spinTimers = new Map();
 function participantText(game) { return game.participants.map((p, i) => `${i + 1}. <@${p.id}>`).join('\n') || 'لا يوجد مشاركون.'; }
 function buildRows(game) {
   const rows = [];
-  if (game.phase === 'join') {
-    rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`roulette_join:${game.id}`).setLabel('🎟️ انضم').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`roulette_stop:${game.id}`).setLabel('🛑 إيقاف').setStyle(ButtonStyle.Danger)));
-    return rows;
-  }
+  if (game.phase === 'join') { rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`roulette_join:${game.id}`).setLabel('🎟️ انضم').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`roulette_stop:${game.id}`).setLabel('🛑 إيقاف').setStyle(ButtonStyle.Danger))); return rows; }
   if (game.phase !== 'decision') return [];
   const selected = game.selectedId;
   const buttons = game.participants.map(p => new ButtonBuilder().setCustomId(`roulette_target:${game.id}:${p.id}`).setLabel(p.username.slice(0, 80)).setStyle(p.id === selected ? ButtonStyle.Secondary : ButtonStyle.Primary).setDisabled(p.id === selected));
@@ -38,7 +35,9 @@ export async function spinRound(message, game) {
   spinTimers.set(timerKey, timer);
 }
 export async function handleRouletteButton(interaction, client, args) {
-  const action = args[0], gameId = args[1], targetId = args[2];
+  const action = interaction.customId.split(':')[0].replace('roulette_', '');
+  const gameId = args[0];
+  const targetId = args[1];
   const game = getRoulette(interaction.guildId, interaction.channelId);
   if (!game || game.id !== gameId) return interaction.reply({ content: '❌ هذه الجولة انتهت.', ephemeral: true });
   const message = interaction.message;
