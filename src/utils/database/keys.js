@@ -8,6 +8,11 @@ export const getGuildBirthdaysKey = (guildId) => `guild:${guildId}:birthdays`;
 export const getBirthdayLeftBackupKey = (guildId) => `guild:${guildId}:birthdays:left`;
 export const getBirthdayTrackingKey = (guildId) => `guild:${guildId}:birthdays:tracking`;
 
+// Legacy ticket-key helpers are retained only for database-facade compatibility.
+// The Ticket feature itself has been removed from the bot.
+export const getTicketKey = (guildId, ticketId) => `guild:${guildId}:ticket:${ticketId}`;
+export const getTicketCounterKey = (guildId) => `guild:${guildId}:ticket_counter`;
+
 export const getInviteTrackingKey = (guildId) => `guild:${guildId}:invites`;
 export const getMemberInvitesKey = (guildId, userId) => `guild:${guildId}:invites:${userId}`;
 export const getInviteUsesKey = (guildId, inviteCode) => `guild:${guildId}:invite_uses:${inviteCode}`;
@@ -63,7 +68,7 @@ export function canonicalizeKey(key) {
 
 export function getLegacyVariantsForCanonical(canonicalKey) {
     const variants = [];
-    for (const { pattern, toCanonical } of LEGACY_KEY_RESOLVERS) {
+    for (const { toCanonical } of LEGACY_KEY_RESOLVERS) {
         const sample = canonicalKey;
         const match = sample.match(/^guild:([^:]+):economy:([^:]+)$/);
         if (match && toCanonical(['', match[1], match[2]]) === canonicalKey) { variants.push(`economy:${match[1]}:${match[2]}`); continue; }
