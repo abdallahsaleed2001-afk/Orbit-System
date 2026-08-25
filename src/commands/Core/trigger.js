@@ -8,6 +8,7 @@ const ACTION_LABELS = {
   [TRIGGER_ACTIONS.UNHIDE]: 'Unhide current channel',
   [TRIGGER_ACTIONS.ADD_ROLE]: 'Give a role',
   [TRIGGER_ACTIONS.REMOVE_ROLE]: 'Remove a role',
+  [TRIGGER_ACTIONS.ADD_MEMBER]: 'Add member to current channel',
   [TRIGGER_ACTIONS.BAN]: 'Ban the target user',
   [TRIGGER_ACTIONS.KICK]: 'Kick the target user',
   [TRIGGER_ACTIONS.WARN]: 'Warn the target user',
