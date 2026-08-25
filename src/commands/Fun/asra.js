@@ -1,0 +1,3 @@
+import { SlashCommandBuilder } from 'discord.js';
+import { startGame } from '../../services/games/gameService.js';
+export default { data: new SlashCommandBuilder().setName('asra').setDescription('Arabic word game'), category: 'Fun', prefixOnly: true, async execute(interaction) { const game = startGame(interaction.guildId, interaction.channel.id, 'asra'); if (game.error === 'active') return interaction.reply({ content: '⚠️ توجد جولة نشطة بالفعل في هذه القناة.' }); await interaction.reply({ content: game.prompt }); } };
