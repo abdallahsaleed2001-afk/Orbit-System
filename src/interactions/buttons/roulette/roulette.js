@@ -57,9 +57,9 @@ function statsText(user, stats) {
 async function sendRoundMessage(channel, game, result) {
   const gif = createRouletteGif(game, result.index);
   const attachment = new AttachmentBuilder(gif, { name: `roulette-round-${game.round}.gif`, description: 'INFINITY GAMES animated roulette round' });
-  const message = await channel.send({ content: roundContent(game, result.participant), files: [attachment], components: buildRows(game) });
-  game.currentMessageId = message.id;
-  return message;
+  const sent = await channel.send({ content: roundContent(game, result.participant), files: [attachment], components: buildRows(game) });
+  game.currentMessageId = sent.id;
+  return sent;
 }
 
 async function sendWinnerMessage(channel, winner) {
@@ -80,6 +80,7 @@ function startDecisionTimer(channel, game) {
   decisionTimers.set(key, setTimeout(async () => {
     if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'decision' || !game.selectedId) return;
     const timedOutId = game.selectedId;
+    const timedOutPlayer = game.participants.find(p => p.id === timedOutId);
     removeRoulettePlayer(game, timedOutId);
     recordRouletteElimination(game.guildId, timedOutId);
     finishRouletteAction(game);
@@ -95,6 +96,9 @@ function startDecisionTimer(channel, game) {
       }
       return;
     }
+
+    // Keep the eliminated player's identity out of the next round's choices.
+    void timedOutPlayer;
     await startNextRound(channel, game);
   }, 10_000));
 }
@@ -105,9 +109,15 @@ export async function sendJoinMessage(message, game) {
   const image = createRouletteJoinImage(guildName);
   const attachment = new AttachmentBuilder(image, { name: 'roulette-registration.png', description: 'INFINITY GAMES roulette registration' });
 
-  // Use the command reply itself so registration starts with one clean image message.
-  const sent = await message.edit({ content: joinContent(game), files: [attachment], components: buildRows(game) });
+  // Prefix commands are user-authored messages and cannot be edited by the bot.
+  // Slash commands return a bot-authored interaction reply, which can be edited safely.
+  const payload = { content: joinContent(game), files: [attachment], components: buildRows(game) };
+  const sent = message.author?.bot
+    ? await message.edit(payload)
+    : await message.channel.send(payload);
+
   game.messageId = sent.id;
+  game.currentMessageId = sent.id;
   game.onJoinTimeout = async () => {
     if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'join') return;
     if (game.participants.length < 2) {
