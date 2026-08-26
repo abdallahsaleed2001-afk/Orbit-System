@@ -3,7 +3,6 @@ import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRoulet
 
 const spinTimers = new Map();
 const decisionTimers = new Map();
-const joinCountdowns = new Map();
 
 function participantText(game) {
   return game.participants.map((p, i) => `${i + 1}. <@${p.id}>`).join('\n') || 'لا يوجد مشاركون.';
@@ -35,29 +34,14 @@ function wheelAttachment(game, selectedIndex) {
 }
 
 export async function sendJoinMessage(message, game) {
-  const endAt = Math.floor((Date.now() + 60_000) / 1000);
-  // The command message belongs to the user, so never edit it. Create a bot-authored message for the game UI.
-  const sent = await message.channel.send({ content: `بدأت الروليت!\n\nوقت الدخول: <t:${endAt}:R>\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\n${participantText(game)}`, components: buildRows(game) });
+  // Discord renders <t:...:R> as a live countdown on every client; no per-second message editing.
+  game.joinEndsAt = Math.floor((Date.now() + 60_000) / 1000);
+  const sent = await message.channel.send({
+    content: `بدأت الروليت!\n\nوقت الدخول: <t:${game.joinEndsAt}:R>\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\n${participantText(game)}`,
+    components: buildRows(game),
+  });
   game.messageId = sent.id;
-  const key = `${game.guildId}:${game.channelId}`;
-  const startedAt = Date.now();
-  const updateCountdown = setInterval(async () => {
-    if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'join') {
-      clearInterval(updateCountdown);
-      joinCountdowns.delete(key);
-      return;
-    }
-    const remaining = Math.max(0, 60 - Math.floor((Date.now() - startedAt) / 1000));
-    await sent.edit({ content: `بدأت الروليت!\n\nوقت الدخول: **${remaining} ثانية**\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\n${participantText(game)}`, components: buildRows(game) }).catch(() => {});
-    if (remaining <= 0) {
-      clearInterval(updateCountdown);
-      joinCountdowns.delete(key);
-    }
-  }, 1000);
-  joinCountdowns.set(key, updateCountdown);
   game.onJoinTimeout = async () => {
-    clearInterval(updateCountdown);
-    joinCountdowns.delete(key);
     if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'join') return;
     if (game.participants.length < 2) {
       await sent.edit({ content: 'انتهت الروليت — يجب أن يشارك شخصان على الأقل.', components: [], attachments: [] }).catch(() => {});
@@ -130,7 +114,7 @@ export async function handleRouletteButton(interaction, client, args) {
     if (result.error === 'joined') return interaction.reply({ content: 'أنت داخل الجولة بالفعل.', ephemeral: true });
     if (result.error === 'full') return interaction.reply({ content: 'وصلت الروليت للحد الأقصى من المشاركين.', ephemeral: true });
     if (result.error) return interaction.reply({ content: 'انتهى وقت الانضمام.', ephemeral: true });
-    await interaction.update({ content: `بدأت الروليت!\n\nالمشاركون (${game.participants.length})\n${participantText(game)}`, components: buildRows(game) });
+    await interaction.update({ content: `بدأت الروليت!\n\nوقت الدخول: <t:${game.joinEndsAt}:R>\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\nالمشاركون (${game.participants.length})\n${participantText(game)}`, components: buildRows(game) });
     return;
   }
   if (action === 'stop') {
