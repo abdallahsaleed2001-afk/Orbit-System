@@ -3,15 +3,13 @@ import { randomUUID } from 'node:crypto';
 const games = new Map();
 const playerStats = new Map();
 const JOIN_MS = 60_000;
-const MAX_PLAYERS = 20;
+const MAX_PLAYERS = 100;
 
 function key(guildId, channelId) { return `${guildId}:${channelId}`; }
 function statsKey(guildId, userId) { return `${guildId}:${userId}`; }
 function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
 function writeU16(out, value) { out.push(value & 255, (value >> 8) & 255); }
 
-// Reliable GIF encoder: it deliberately emits a clear code before every pixel.
-// This keeps the LZW code width fixed and avoids decoder incompatibilities.
 function encodeGifFrame(indices, minCodeSize = 2) {
   const clear = 1 << minCodeSize;
   const end = clear + 1;
@@ -28,7 +26,6 @@ function encodeGifFrame(indices, minCodeSize = 2) {
       bitCount -= 8;
     }
   };
-
   emit(clear);
   for (const index of indices) {
     emit(index & (clear - 1));
@@ -36,7 +33,6 @@ function encodeGifFrame(indices, minCodeSize = 2) {
   }
   emit(end);
   if (bitCount > 0) data.push(bitBuffer & 255);
-
   const out = [minCodeSize];
   for (let i = 0; i < data.length; i += 255) {
     const chunk = data.slice(i, i + 255);
@@ -53,7 +49,6 @@ function drawFrame(width, height, count, rotation) {
   const radius = Math.min(cx, cy) - 10;
   const twoPi = Math.PI * 2;
   const sector = twoPi / count;
-
   pixels.fill(0);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -67,15 +62,11 @@ function drawFrame(width, height, count, rotation) {
       pixels[y * width + x] = 1 + (index % 3);
     }
   }
-
-  // Center circle.
   for (let y = Math.floor(cy - 10); y <= Math.ceil(cy + 10); y++) {
     for (let x = Math.floor(cx - 10); x <= Math.ceil(cx + 10); x++) {
       if ((x - cx) ** 2 + (y - cy) ** 2 <= 10 ** 2) pixels[y * width + x] = 0;
     }
   }
-
-  // Pointer at the top.
   for (let y = 2; y < 18; y++) {
     const half = Math.max(1, Math.floor((y - 2) / 3));
     for (let x = Math.floor(cx - half); x <= Math.ceil(cx + half); x++) pixels[y * width + x] = 0;
@@ -87,46 +78,25 @@ export function createRouletteGif(participants, selectedIndex) {
   const width = 160;
   const height = 160;
   const frames = 18;
-  const palette = [
-    0x15171a,
-    0x5865f2,
-    0xed4245,
-    0x57f287,
-  ];
-  const out = [71, 73, 70, 56, 57, 97]; // GIF89a
-
+  const palette = [0x15171a, 0x5865f2, 0xed4245, 0x57f287];
+  const out = [71, 73, 70, 56, 57, 97];
   writeU16(out, width);
   writeU16(out, height);
-  // Global color table: present, 8-bit color resolution, 4 entries.
   out.push(0xf0, 0x00, 0x00);
-  for (const color of palette) {
-    out.push((color >> 16) & 255, (color >> 8) & 255, color & 255);
-  }
-
+  for (const color of palette) out.push((color >> 16) & 255, (color >> 8) & 255, color & 255);
   const count = Math.max(2, participants.length);
   const start = Math.random() * Math.PI * 2;
   const target = ((selectedIndex + 0.5) / count) * Math.PI * 2;
-
   for (let frame = 0; frame < frames; frame++) {
     const t = frame / (frames - 1);
     const eased = 1 - Math.pow(1 - t, 3);
     const rotation = start + Math.PI * 2 * 5.5 * eased + target;
-
-    // Graphic Control Extension: disposal=2, delay increases as wheel slows.
     const delay = Math.max(3, Math.round(4 + 8 * t));
     out.push(0x21, 0xf9, 0x04, 0x08, delay & 255, (delay >> 8) & 255, 0x00, 0x00);
-
-    // Image descriptor.
     out.push(0x2c);
-    writeU16(out, 0);
-    writeU16(out, 0);
-    writeU16(out, width);
-    writeU16(out, height);
-    out.push(0x00);
-
+    writeU16(out, 0); writeU16(out, 0); writeU16(out, width); writeU16(out, height); out.push(0x00);
     out.push(...encodeGifFrame(drawFrame(width, height, count, rotation), 2));
   }
-
   out.push(0x3b);
   return Buffer.from(out);
 }
@@ -136,7 +106,6 @@ function ensureStats(guildId, userId) {
   if (!playerStats.has(k)) playerStats.set(k, { rounds: 0, wins: 0, eliminations: 0, losses: 0 });
   return playerStats.get(k);
 }
-
 export function getRoulettePlayerStats(guildId, userId) { return { ...ensureStats(guildId, userId) }; }
 export function recordRouletteRound(guildId, participants) { for (const participant of participants) ensureStats(guildId, participant.id).rounds += 1; }
 export function recordRouletteElimination(guildId, userId) { ensureStats(guildId, userId).eliminations += 1; ensureStats(guildId, userId).losses += 1; }
