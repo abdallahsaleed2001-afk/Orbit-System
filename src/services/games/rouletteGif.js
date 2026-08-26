@@ -44,7 +44,6 @@ function encodeGifFrame(indices, minCodeSize = 4) {
       continue;
     }
 
-    // The dictionary key packs a previous LZW code and a 4-bit palette index.
     const key = (prefix << 4) | value;
     const existing = dictionary.get(key);
 
@@ -57,9 +56,10 @@ function encodeGifFrame(indices, minCodeSize = 4) {
 
     if (nextCode < 4096) {
       dictionary.set(key, nextCode++);
-      if (nextCode === (1 << codeSize) && codeSize < 12) codeSize++;
+      if (nextCode === (1 << codeSize) && codeSize < 12) {
+        codeSize++;
+      }
     } else {
-      // Dictionary is full: clear it and continue with the current pixel.
       emit(clear);
       reset();
     }
@@ -72,8 +72,7 @@ function encodeGifFrame(indices, minCodeSize = 4) {
 
   if (bitCount > 0) data.push(bitBuffer & 255);
 
-  // GIF image data is a sequence of sub-blocks. Do not split these blocks
-  // again elsewhere; doing so corrupts the GIF stream.
+  // GIF image data is a sequence of sub-blocks. Keep this structure intact.
   const out = [minCodeSize];
   for (let i = 0; i < data.length; i += 255) {
     const chunk = data.slice(i, i + 255);
@@ -106,10 +105,9 @@ export function createRouletteGif(game, selectedIndex) {
   writeU16(out, width);
   writeU16(out, height);
 
-  // 16-color global color table: 1 flag + 3 color-resolution bits + size 3.
-  // The previous value (0xF3) advertised 256 colors while only 16 were written,
-  // which made Discord/clients reject or fail to render the GIF.
-  out.push(0xF0, 0x00, 0x00);
+  // 16-color global color table.
+  // GIF size bits 011 => 2^(3 + 1) = 16 colors.
+  out.push(0xF3, 0x00, 0x00);
   for (const color of PALETTE) out.push(...color);
 
   // Netscape loop extension: loop forever.
@@ -140,7 +138,6 @@ export function createRouletteGif(game, selectedIndex) {
       ? 120
       : Math.max(4, Math.round(5 + 7 * t));
 
-    // Graphic Control Extension.
     out.push(
       0x21, 0xF9, 0x04,
       0x00,
@@ -150,7 +147,6 @@ export function createRouletteGif(game, selectedIndex) {
       0x00
     );
 
-    // Image Descriptor.
     out.push(0x2C);
     writeU16(out, 0);
     writeU16(out, 0);
@@ -158,7 +154,7 @@ export function createRouletteGif(game, selectedIndex) {
     writeU16(out, height);
     out.push(0x00);
 
-    // Append the complete, correctly structured LZW sub-block stream.
+    // Append the complete LZW stream without splitting it outside its GIF sub-blocks.
     out.push(...encodeGifFrame(indices, 4));
   }
 
