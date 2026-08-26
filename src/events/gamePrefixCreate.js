@@ -5,6 +5,7 @@ import { sendJoinMessage } from '../interactions/buttons/roulette/roulette.js';
 import { logger } from '../utils/logger.js';
 
 const GAME_TTL_MS = 20_000;
+const MEMORY_HIDE_MS = 2_000;
 const GAME_PREFIX_TYPES = new Map([
   ['فكك', 'fakk'], ['اشبك', 'ashbak'], ['اسرع', 'asra'], ['اسم', 'ism'],
   ['حساب', 'hisab'], ['رتب', 'ratib'], ['ذاكرة', 'thakira'], ['مختلف', 'mokhtalef'],
@@ -103,12 +104,23 @@ export default {
         return;
       }
       if (!game?.prompt) return;
-      await message.channel.send({ content: game.prompt });
+
+      // Keep the bot's message reference so games that have multiple phases
+      // can update the same message instead of creating a duplicate message.
+      const gameMessage = await message.channel.send({ content: game.prompt });
       scheduleTimeout(message, game);
+
       if (type === 'thakira') {
-        setTimeout(() => {
-          if (getActiveGame(message.guild.id, message.channel.id) === game) message.channel.send('🧠 **انتهى وقت الحفظ — اكتب الرقم الذي رأيته!**').catch(() => {});
-        }, 2000);
+        setTimeout(async () => {
+          if (getActiveGame(message.guild.id, message.channel.id) !== game) return;
+          try {
+            await gameMessage.edit({
+              content: '🧠 **انتهى وقت الحفظ — اكتب الرقم الذي رأيته!**',
+            });
+          } catch (error) {
+            logger.warn?.('Failed to update memory game message:', error);
+          }
+        }, MEMORY_HIDE_MS);
       }
     } catch (error) {
       logger.error('Error handling game prefix message:', error);
