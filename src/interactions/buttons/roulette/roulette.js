@@ -1,6 +1,6 @@
 import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRouletteTarget, finishRouletteAction, getRoulette, getRoulettePlayerStats, getWinner, isParticipant, isSelected, removeRoulettePlayer, cancelRoulette, recordRouletteElimination, recordRouletteWinner } from '../../../services/games/rouletteService.js';
-import { createRouletteGif } from '../../../services/games/rouletteImage.js';
+import { createRouletteGif } from '../../../services/games/rouletteGif.js';
 import { createRouletteWinnerImage } from '../../../services/games/rouletteWinnerImage.js';
 
 const decisionTimers = new Map();
@@ -57,8 +57,8 @@ async function sendWinnerMessage(channel, winner) {
   const embed = new EmbedBuilder()
     .setTitle('🏆 الفائز في الروليت')
     .setDescription(`**${winner.username}**\n<@${winner.id}>`)
-    .setImage('attachment://roulette-winner.png')
-    .setThumbnail(winner.avatar || null);
+    .setImage('attachment://roulette-winner.png');
+  if (winner.avatar) embed.setThumbnail(winner.avatar);
   await channel.send({ embeds: [embed], files: [attachment] });
 }
 
@@ -74,7 +74,6 @@ function startDecisionTimer(channel, game) {
   decisionTimers.set(key, setTimeout(async () => {
     if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'decision' || !game.selectedId) return;
     const timedOutId = game.selectedId;
-    const timedOutPlayer = game.participants.find(player => player.id === timedOutId);
     removeRoulettePlayer(game, timedOutId);
     recordRouletteElimination(game.guildId, timedOutId);
     finishRouletteAction(game);
