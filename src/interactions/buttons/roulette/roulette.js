@@ -11,20 +11,20 @@ function buildRows(game) {
   const rows = [];
   if (game.phase === 'join') {
     rows.push(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`roulette_join:${game.id}`).setLabel('انضم').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`roulette_stats:${game.id}`).setLabel('إحصائيات اللاعب').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`roulette_stop:${game.id}`).setLabel('إيقاف').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`roulette_join:${game.id}`).setLabel('انضم').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`roulette_stats:${game.id}`).setLabel('إحصائيات اللاعب').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`roulette_stop:${game.id}`).setLabel('إيقاف').setStyle(ButtonStyle.Secondary),
     ));
     return rows;
   }
   if (game.phase !== 'decision') return [];
   const selected = game.selectedId;
-  const buttons = game.participants.map(p => new ButtonBuilder().setCustomId(`roulette_target:${game.id}:${p.id}`).setLabel(p.username.slice(0, 80)).setStyle(p.id === selected ? ButtonStyle.Secondary : ButtonStyle.Primary).setDisabled(p.id === selected));
+  const buttons = game.participants.map(p => new ButtonBuilder().setCustomId(`roulette_target:${game.id}:${p.id}`).setLabel(p.username.slice(0, 80)).setStyle(ButtonStyle.Secondary).setDisabled(p.id === selected));
   for (let i = 0; i < buttons.length && rows.length < 4; i += 5) rows.push(new ActionRowBuilder().addComponents(...buttons.slice(i, i + 5)));
   rows.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`roulette_leave:${game.id}`).setLabel('انسحب').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`roulette_random:${game.id}`).setLabel('اطرد شخصًا عشوائيًا').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`roulette_stats:${game.id}`).setLabel('إحصائيات اللاعب').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`roulette_random:${game.id}`).setLabel('اطرد شخصًا عشوائيًا').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`roulette_stats:${game.id}`).setLabel('إحصائيات اللاعب').setStyle(ButtonStyle.Secondary),
   ));
   return rows.slice(0, 5);
 }
