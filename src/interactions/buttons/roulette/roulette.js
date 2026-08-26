@@ -1,6 +1,7 @@
 import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRouletteTarget, finishRouletteAction, getRoulette, getRoulettePlayerStats, getWinner, isParticipant, isSelected, removeRoulettePlayer, cancelRoulette, recordRouletteElimination, recordRouletteWinner } from '../../../services/games/rouletteService.js';
 import { createRouletteGif } from '../../../services/games/rouletteGif.js';
+import { createRouletteJoinImage } from '../../../services/games/rouletteJoinImage.js';
 import { createRouletteWinnerImage } from '../../../services/games/rouletteWinnerImage.js';
 
 const decisionTimers = new Map();
@@ -18,7 +19,7 @@ function buildRows(game) {
   }
   if (game.phase !== 'decision') return [];
 
-  // The player whose turn it is is never shown as a target option.
+  // The selected player is never presented as a target option.
   const selected = game.selectedId;
   const buttons = game.participants
     .filter(p => p.id !== selected)
@@ -64,10 +65,7 @@ async function sendRoundMessage(channel, game, result) {
 async function sendWinnerMessage(channel, winner) {
   const image = createRouletteWinnerImage(winner);
   const attachment = new AttachmentBuilder(image, { name: 'roulette-winner.png', description: 'INFINITY GAMES roulette winner' });
-  await channel.send({
-    content: `🏆 **الفائز في الروليت**\n**${winner.username}**\n<@${winner.id}>`,
-    files: [attachment],
-  });
+  await channel.send({ content: `🏆 **الفائز في الروليت**\n**${winner.username}**\n<@${winner.id}>`, files: [attachment] });
 }
 
 async function startNextRound(channel, game) {
@@ -97,14 +95,18 @@ function startDecisionTimer(channel, game) {
       }
       return;
     }
-
     await startNextRound(channel, game);
   }, 10_000));
 }
 
 export async function sendJoinMessage(message, game) {
   game.joinEndsAt = Math.floor((Date.now() + 60_000) / 1000);
-  const sent = await message.channel.send({ content: joinContent(game), components: buildRows(game) });
+  const guildName = message.guild?.name || 'INFINITY';
+  const image = createRouletteJoinImage(guildName);
+  const attachment = new AttachmentBuilder(image, { name: 'roulette-registration.png', description: 'INFINITY GAMES roulette registration' });
+
+  // Use the command reply itself so registration starts with one clean image message.
+  const sent = await message.edit({ content: joinContent(game), files: [attachment], components: buildRows(game) });
   game.messageId = sent.id;
   game.onJoinTimeout = async () => {
     if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'join') return;
