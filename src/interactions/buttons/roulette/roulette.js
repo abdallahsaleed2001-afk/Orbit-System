@@ -12,6 +12,7 @@ function buildRows(game) {
   if (game.phase === 'join') {
     rows.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`roulette_join:${game.id}`).setLabel('انضم').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`roulette_stats:${game.id}`).setLabel('إحصائيات اللاعب').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`roulette_stop:${game.id}`).setLabel('إيقاف').setStyle(ButtonStyle.Danger),
     ));
     return rows;
@@ -33,7 +34,7 @@ function payload(game) {
 }
 
 export async function sendJoinMessage(message, game) {
-  const sent = await message.channel.send({ content: `بدأت الروليت!\n${message.author}\nاضغط انضم للدخول. لديك 12 ثانية.`, components: buildRows(game) });
+  const sent = await message.channel.send({ content: `بدأت الروليت!\n${message.author}\nاضغط انضم للدخول. لديك دقيقة واحدة.`, components: buildRows(game) });
   game.messageId = sent.id;
   game.onJoinTimeout = async () => {
     if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'join') return;
