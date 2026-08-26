@@ -1,0 +1,29 @@
+import { deflateSync } from 'node:zlib';
+
+const FONT = {
+  A:['01110','10001','10001','11111','10001','10001','10001'],B:['11110','10001','10001','11110','10001','10001','11110'],C:['01111','10000','10000','10000','10000','10000','01111'],D:['11110','10001','10001','10001','10001','10001','11110'],E:['11111','10000','10000','11110','10000','10000','11111'],F:['11111','10000','10000','11110','10000','10000','10000'],G:['01111','10000','10000','10111','10001','10001','01111'],H:['10001','10001','10001','11111','10001','10001','10001'],I:['11111','00100','00100','00100','00100','00100','11111'],J:['00111','00010','00010','00010','10010','10010','01100'],K:['10001','10010','10100','11000','10100','10010','10001'],L:['10000','10000','10000','10000','10000','10000','11111'],M:['10001','11011','10101','10101','10001','10001','10001'],N:['10001','11001','10101','10011','10001','10001','10001'],O:['01110','10001','10001','10001','10001','10001','01110'],P:['11110','10001','10001','11110','10000','10000','10000'],Q:['01110','10001','10001','10001','10101','10010','01101'],R:['11110','10001','10001','11110','10100','10010','10001'],S:['01111','10000','10000','01110','00001','00001','11110'],T:['11111','00100','00100','00100','00100','00100','00100'],U:['10001','10001','10001','10001','10001','10001','01110'],V:['10001','10001','10001','10001','10001','01010','00100'],W:['10001','10001','10001','10101','10101','10101','01010'],X:['10001','10001','01010','00100','01010','10001','10001'],Y:['10001','10001','01010','00100','00100','00100','00100'],Z:['11111','00001','00010','00100','01000','10000','11111'],
+  '0':['01110','10001','10011','10101','11001','10001','01110'],'1':['00100','01100','00100','00100','00100','00100','01110'],'2':['01110','10001','00001','00010','00100','01000','11111'],'3':['11110','00001','00001','01110','00001','00001','11110'],'4':['00010','00110','01010','10010','11111','00010','00010'],'5':['11111','10000','10000','11110','00001','00001','11110'],'6':['01110','10000','10000','11110','10001','10001','01110'],'7':['11111','00001','00010','00100','01000','01000','01000'],'8':['01110','10001','10001','01110','10001','10001','01110'],'9':['01110','10001','10001','01111','00001','00001','01110'],
+  '-':['00000','00000','00000','11111','00000','00000','00000'],'.':['00000','00000','00000','00000','00000','00110','00110'],'?':['01110','10001','00001','00010','00100','00000','00100'],' ':['00000','00000','00000','00000','00000','00000','00000']
+};
+const C=['#0b0d11','#191d25','#f5f7fb','#9aa4b2','#5865f2','#57f287','#ed4245','#f0b90b'];
+const P=C.map(h=>{const n=Number.parseInt(h.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255];});
+const px=(p,w,x,y,c)=>{if(x<0||y<0||x>=w||y>=p.length/(w*3))return;const i=(y*w+x)*3;p[i]=c[0];p[i+1]=c[1];p[i+2]=c[2];};
+const rect=(p,w,h,x,y,rw,rh,c)=>{for(let yy=Math.max(0,y);yy<Math.min(h,y+rh);yy++)for(let xx=Math.max(0,x);xx<Math.min(w,x+rw);xx++)px(p,w,xx,yy,c);};
+function text(p,w,h,value,x,y,scale,color,align='left',max=Infinity){const chars=[...String(value).toUpperCase()],cw=5*scale,g=scale,shown=chars.slice(0,Number.isFinite(max)?Math.max(1,Math.floor((max+g)/(cw+g))):chars.length),total=shown.length*(cw+g)-g;let sx=x;if(align==='center')sx-=total/2;shown.forEach((ch,i)=>{const glyph=FONT[ch]||FONT['?'];glyph.forEach((row,ry)=>[...row].forEach((bit,rx)=>{if(bit==='1')rect(p,w,h,Math.round(sx+i*(cw+g))+rx*scale,y+ry*scale,scale,scale,color);}));});}
+function sector(p,w,h,cx,cy,r,start,end,c){for(let y=Math.floor(cy-r);y<=Math.ceil(cy+r);y++)for(let x=Math.floor(cx-r);x<=Math.ceil(cx+r);x++){const dx=x-cx,dy=y-cy;if(dx*dx+dy*dy>r*r)continue;let a=Math.atan2(dy,dx);while(a<0)a+=Math.PI*2;let s=start,e=end;while(a<s)a+=Math.PI*2;if(a>=s&&a<e)px(p,w,x,y,c);}}
+function crc32(data){let crc=0xffffffff;for(const b of data){crc^=b;for(let i=0;i<8;i++)crc=(crc>>>1)^(0xedb88320&-(crc&1));}return(crc^0xffffffff)>>>0;}
+function png(w,h,p){const raw=Buffer.alloc((w*3+1)*h);for(let y=0;y<h;y++){raw[y*(w*3+1)]=0;p.copy(raw,y*(w*3+1)+1,y*w*3,(y+1)*w*3);}const chunk=(type,data)=>{const t=Buffer.from(type),body=Buffer.concat([t,data]),o=Buffer.alloc(data.length+12);o.writeUInt32BE(data.length,0);t.copy(o,4);data.copy(o,8);o.writeUInt32BE(crc32(body),data.length+8);return o;};const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(w,0);ihdr.writeUInt32BE(h,4);ihdr[8]=8;ihdr[9]=2;return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',ihdr),chunk('IDAT',deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]);}
+
+export function createRouletteJoinImage(guildName='INFINITY') {
+  const w=900,h=450,p=Buffer.alloc(w*h*3);for(let y=0;y<h;y++)for(let x=0;x<w;x++)px(p,w,x,y,P[0]);
+  rect(p,w,h,20,20,860,410,P[1]);rect(p,w,h,20,20,7,410,P[4]);
+  text(p,w,h,'INFINITY GAMES',55,52,4,P[2]);text(p,w,h,'ROULETTE',55,92,2,P[3]);text(p,w,h,guildName,55,126,3,P[4],'left',360);
+  text(p,w,h,'JOIN THE GAME',55,190,2,P[2]);text(p,w,h,'PRESS JOIN TO ENTER THE ROULETTE',55,222,1,P[3],'left',420);
+  const cx=650,cy=225,r=145,count=8,step=Math.PI*2/count,colors=[4,5,6,7,4,5,6,7];
+  for(let i=0;i<count;i++){const a=-Math.PI/2+i*step;sector(p,w,h,cx,cy,r,a,a+step,P[colors[i]]);}for(let a=0;a<Math.PI*2;a+=.002)px(p,w,Math.round(cx+Math.cos(a)*r),Math.round(cy+Math.sin(a)*r),P[2]);
+  for(let i=0;i<count;i++){const a=-Math.PI/2+(i+.5)*step;text(p,w,h,String(i+1),cx+Math.cos(a)*r*.66,cy+Math.sin(a)*r*.66-5,2,P[2],'center');}
+  for(let y=45;y<75;y++){const half=Math.max(2,Math.floor((y-45)/4));for(let x=cx-half;x<=cx+half;x++)px(p,w,x,y,P[2]);}
+  for(let y=cy-34;y<=cy+34;y++)for(let x=cx-34;x<=cx+34;x++)if((x-cx)**2+(y-cy)**2<=1156)px(p,w,x,y,P[0]);
+  text(p,w,h,'PLAY',cx,cy-6,2,P[2],'center');
+  return png(w,h,p);
+}
