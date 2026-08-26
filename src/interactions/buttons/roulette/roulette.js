@@ -2,6 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRouletteTarget, finishRouletteAction, getRoulette, getRoulettePlayerStats, getWinner, isParticipant, isSelected, removeRoulettePlayer, cancelRoulette, recordRouletteElimination, recordRouletteWinner } from '../../../services/games/rouletteService.js';
 
 const spinTimers = new Map();
+const decisionTimers = new Map();
 
 function participantText(game) {
   return game.participants.map((p, i) => `${i + 1}. <@${p.id}>`).join('\n') || 'لا يوجد مشاركون.';
@@ -48,7 +49,36 @@ export async function sendJoinMessage(message, game) {
   return sent;
 }
 
+function clearDecisionTimer(game) {
+  const key = `${game.guildId}:${game.channelId}`;
+  const timer = decisionTimers.get(key);
+  if (timer) clearTimeout(timer);
+  decisionTimers.delete(key);
+}
+
+function startDecisionTimer(message, game) {
+  clearDecisionTimer(game);
+  const key = `${game.guildId}:${game.channelId}`;
+  decisionTimers.set(key, setTimeout(async () => {
+    if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'decision' || !game.selectedId) return;
+    const timedOutId = game.selectedId;
+    removeRoulettePlayer(game, timedOutId);
+    recordRouletteElimination(game.guildId, timedOutId);
+    finishRouletteAction(game);
+    if (game.phase === 'finished') {
+      const winner = getWinner(game);
+      if (winner) recordRouletteWinner(game.guildId, winner.id);
+      cancelRoulette(game.guildId, game.channelId);
+      await message.edit({ content: `انتهى وقت <@${timedOutId}> وتم إخراجه من اللعبة.\n\nالفائز في الروليت: ${winner ? `<@${winner.id}>` : 'لا يوجد فائز'}`, components: [] }).catch(() => {});
+      return;
+    }
+    await message.edit({ content: `انتهى وقت <@${timedOutId}> وتم إخراجه من اللعبة.\n\nالجولة التالية...\n\n${participantText(game)}`, components: buildRows(game) }).catch(() => {});
+    setTimeout(() => spinRound(message, game).catch(() => {}), 900);
+  }, 10_000));
+}
+
 export async function spinRound(message, game) {
+  clearDecisionTimer(game);
   const result = beginRouletteRound(game);
   if (!result) return;
   await message.edit({ content: `العجلة تدور...\n\n${participantText(game)}`, components: [] }).catch(() => {});
@@ -58,6 +88,7 @@ export async function spinRound(message, game) {
     if (getRoulette(game.guildId, game.channelId) !== game) return;
     game.phase = 'decision';
     await message.edit({ content: `توقفت العجلة على: <@${result.participant.id}>\n\n${participantText(game)}`, components: buildRows(game) }).catch(() => {});
+    startDecisionTimer(message, game);
   }, 3600);
   spinTimers.set(timerKey, timer);
 }
@@ -84,6 +115,7 @@ export async function handleRouletteButton(interaction, client, args) {
   }
   if (action === 'stop') {
     if (!isParticipant(game, interaction.user.id)) return interaction.reply({ content: 'فقط المشاركون يستطيعون إيقاف الروليت.', ephemeral: true });
+    clearDecisionTimer(game);
     cancelRoulette(game.guildId, game.channelId);
     await interaction.update({ content: 'تم إيقاف الروليت.', components: [] });
     return;
@@ -95,6 +127,7 @@ export async function handleRouletteButton(interaction, client, args) {
   }
   if (!isSelected(game, interaction.user.id)) return interaction.reply({ content: 'الدور ليس لك.', ephemeral: true });
 
+  clearDecisionTimer(game);
   let eliminatedId = null;
   if (action === 'target') {
     if (!targetId || targetId === interaction.user.id) return interaction.reply({ content: 'اختر شخصًا آخر من القائمة.', ephemeral: true });
