@@ -4,10 +4,6 @@ import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRoulet
 const spinTimers = new Map();
 const decisionTimers = new Map();
 
-function participantText(game) {
-  return game.participants.map((p, i) => `${i + 1}. <@${p.id}>`).join('\n') || 'لا يوجد مشاركون.';
-}
-
 function buildRows(game) {
   const rows = [];
   if (game.phase === 'join') {
@@ -33,11 +29,18 @@ function wheelAttachment(game, selectedIndex) {
   return new AttachmentBuilder(createRouletteGif(game.participants, selectedIndex), { name: 'roulette.gif' });
 }
 
+function joinContent(game) {
+  return `بدأت الروليت!\n\nوقت الدخول: <t:${game.joinEndsAt}:R>\nعدد المشاركين: **${game.participants.length}**\nاضغط انضم للدخول.`;
+}
+
+function playerCount(game) {
+  return `عدد المشاركين: **${game.participants.length}**`;
+}
+
 export async function sendJoinMessage(message, game) {
-  // Discord renders <t:...:R> as a live countdown on every client; no per-second message editing.
   game.joinEndsAt = Math.floor((Date.now() + 60_000) / 1000);
   const sent = await message.channel.send({
-    content: `بدأت الروليت!\n\nوقت الدخول: <t:${game.joinEndsAt}:R>\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\n${participantText(game)}`,
+    content: joinContent(game),
     components: buildRows(game),
   });
   game.messageId = sent.id;
@@ -76,7 +79,7 @@ function startDecisionTimer(message, game) {
       await message.edit({ content: `تم طرد <@${timedOutId}>\n\nالفائز في الروليت: ${winner ? `<@${winner.id}>` : 'لا يوجد فائز'}`, components: [], attachments: [] }).catch(() => {});
       return;
     }
-    await message.edit({ content: `تم طرد <@${timedOutId}>\nسيتم بدء الجولة التالية بعد قليل.\n\n${participantText(game)}`, components: [], attachments: [] }).catch(() => {});
+    await message.edit({ content: `تم طرد <@${timedOutId}>\nسيتم بدء الجولة التالية بعد قليل.\n\n${playerCount(game)}`, components: [], attachments: [] }).catch(() => {});
     setTimeout(() => spinRound(message, game).catch(() => {}), 1800);
   }, 10_000));
 }
@@ -85,13 +88,13 @@ export async function spinRound(message, game) {
   clearDecisionTimer(game);
   const result = beginRouletteRound(game);
   if (!result) return;
-  await message.edit({ content: `العجلة تدور...\n\n${participantText(game)}`, components: [], files: [wheelAttachment(game, result.index)] }).catch(() => {});
+  await message.edit({ content: `العجلة تدور...\n\n${playerCount(game)}`, components: [], files: [wheelAttachment(game, result.index)] }).catch(() => {});
   const timerKey = `${game.guildId}:${game.channelId}`;
   clearTimeout(spinTimers.get(timerKey));
   const timer = setTimeout(async () => {
     if (getRoulette(game.guildId, game.channelId) !== game) return;
     game.phase = 'decision';
-    await message.edit({ content: `توقفت العجلة على: <@${result.participant.id}>\n\n${participantText(game)}`, components: buildRows(game) }).catch(() => {});
+    await message.edit({ content: `توقفت العجلة على: <@${result.participant.id}>\n\n${playerCount(game)}`, components: buildRows(game) }).catch(() => {});
     startDecisionTimer(message, game);
   }, 3600);
   spinTimers.set(timerKey, timer);
@@ -113,8 +116,8 @@ export async function handleRouletteButton(interaction, client, args) {
     const result = addRoulettePlayer(interaction.guildId, interaction.channelId, interaction.user);
     if (result.error === 'joined') return interaction.reply({ content: 'أنت داخل الجولة بالفعل.', ephemeral: true });
     if (result.error === 'full') return interaction.reply({ content: 'وصلت الروليت للحد الأقصى من المشاركين.', ephemeral: true });
-    if (result.error) return interaction.reply({ content: 'انتهى وقت الانضمام.', ephemeral: true });
-    await interaction.update({ content: `بدأت الروليت!\n\nوقت الدخول: <t:${game.joinEndsAt}:R>\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\nالمشاركون (${game.participants.length})\n${participantText(game)}`, components: buildRows(game) });
+    if (result.error) return interaction.reply({ content: 'انتهى وقت الدخول.', ephemeral: true });
+    await interaction.update({ content: joinContent(game), components: buildRows(game) });
     return;
   }
   if (action === 'stop') {
@@ -155,11 +158,11 @@ export async function handleRouletteButton(interaction, client, args) {
     return;
   }
   if (eliminatedId) {
-    await interaction.update({ content: `تم طرد <@${eliminatedId}>\nسيتم بدء الجولة التالية بعد قليل.`, components: [], attachments: [] });
+    await interaction.update({ content: `تم طرد <@${eliminatedId}>\nسيتم بدء الجولة التالية بعد قليل.\n\n${playerCount(game)}`, components: [], attachments: [] });
     setTimeout(() => spinRound(message, game).catch(() => {}), 1800);
     return;
   }
-  await interaction.update({ content: `سيتم بدء الجولة التالية بعد قليل.\n\n${participantText(game)}`, components: [], attachments: [] });
+  await interaction.update({ content: `سيتم بدء الجولة التالية بعد قليل.\n\n${playerCount(game)}`, components: [], attachments: [] });
   setTimeout(() => spinRound(message, game).catch(() => {}), 1800);
 }
 
