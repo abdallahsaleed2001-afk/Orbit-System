@@ -34,7 +34,10 @@ export function createRouletteGif(game, selectedIndex) {
     const delay = frame === frames - 1 ? 120 : Math.max(4, Math.round(5 + 7 * t));
     out.push(0x21, 0xF9, 0x04, 0x00, delay & 255, (delay >> 8) & 255, 0x00, 0x00, 0x2C);
     writeU16(out, 0); writeU16(out, 0); writeU16(out, width); writeU16(out, height); out.push(0x00);
-    out.push(...encodeGifFrame(indices, 4));
+    const frameData = encodeGifFrame(indices, 4);
+    for (let i = 0; i < frameData.length; i += 8192) {
+      out.push(...frameData.slice(i, i + 8192));
+    }
   }
   out.push(0x3B); return Buffer.from(out);
 }
