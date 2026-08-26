@@ -1,4 +1,4 @@
-import { FONT, PALETTE, cleanName, drawRouletteFrame } from './rouletteGifRenderer.js';
+import { PALETTE, drawRouletteFrame } from './rouletteGifRenderer.js';
 
 function writeU16(out, value) { out.push(value & 255, (value >> 8) & 255); }
 
@@ -25,7 +25,6 @@ export function createRouletteGif(game, selectedIndex) {
   writeU16(out, width); writeU16(out, height);
   out.push(0xF3, 0x00, 0x00);
   for (const color of PALETTE) out.push(...color);
-  out.push(0x21, 0xFF, 0x0B, ...Buffer.from('NETSCAPE2.0', 'ascii'), 0x03, 0x01, 0x00, 0x00, 0x00);
 
   const count = Math.max(2, game.participants.length);
   const step = Math.PI * 2 / count;
