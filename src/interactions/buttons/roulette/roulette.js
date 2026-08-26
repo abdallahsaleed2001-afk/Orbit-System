@@ -1,6 +1,7 @@
-import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRouletteTarget, finishRouletteAction, getRoulette, getRoulettePlayerStats, getWinner, isParticipant, isSelected, removeRoulettePlayer, cancelRoulette, recordRouletteElimination, recordRouletteWinner } from '../../../services/games/rouletteService.js';
-import { createRouletteImage } from '../../../services/games/rouletteImage.js';
+import { createRouletteGif } from '../../../services/games/rouletteImage.js';
+import { createRouletteWinnerImage } from '../../../services/games/rouletteWinnerImage.js';
 
 const decisionTimers = new Map();
 
@@ -43,11 +44,22 @@ function statsText(user, stats) {
 }
 
 async function sendRoundMessage(channel, game, result) {
-  const image = createRouletteImage(game, result.index);
-  const attachment = new AttachmentBuilder(image, { name: `roulette-round-${game.round}.png`, description: 'Orbit System roulette round' });
+  const gif = createRouletteGif(game, result.index);
+  const attachment = new AttachmentBuilder(gif, { name: `roulette-round-${game.round}.gif`, description: 'Orbit System animated roulette round' });
   const message = await channel.send({ content: roundContent(game, result.participant), files: [attachment], components: buildRows(game) });
   game.currentMessageId = message.id;
   return message;
+}
+
+async function sendWinnerMessage(channel, winner) {
+  const image = createRouletteWinnerImage(winner);
+  const attachment = new AttachmentBuilder(image, { name: 'roulette-winner.png', description: 'Orbit System roulette winner' });
+  const embed = new EmbedBuilder()
+    .setTitle('🏆 الفائز في الروليت')
+    .setDescription(`**${winner.username}**\n<@${winner.id}>`)
+    .setImage('attachment://roulette-winner.png')
+    .setThumbnail(winner.avatar || null);
+  await channel.send({ embeds: [embed], files: [attachment] });
 }
 
 async function startNextRound(channel, game) {
@@ -62,17 +74,23 @@ function startDecisionTimer(channel, game) {
   decisionTimers.set(key, setTimeout(async () => {
     if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'decision' || !game.selectedId) return;
     const timedOutId = game.selectedId;
+    const timedOutPlayer = game.participants.find(player => player.id === timedOutId);
     removeRoulettePlayer(game, timedOutId);
     recordRouletteElimination(game.guildId, timedOutId);
     finishRouletteAction(game);
+
+    await channel.send({ content: `تم طرد <@${timedOutId}> لعدم التفاعل` }).catch(() => {});
+
     if (game.phase === 'finished') {
       const winner = getWinner(game);
-      if (winner) recordRouletteWinner(game.guildId, winner.id);
-      cancelRoulette(game.guildId, game.channelId);
-      await channel.send({ content: `⏱️ انتهى وقت <@${timedOutId}>.\n\n🏆 الفائز في الروليت: <@${winner?.id}>` }).catch(() => {});
+      if (winner) {
+        recordRouletteWinner(game.guildId, winner.id);
+        cancelRoulette(game.guildId, game.channelId);
+        await sendWinnerMessage(channel, winner).catch(() => {});
+      }
       return;
     }
-    await channel.send({ content: `⏱️ انتهى وقت <@${timedOutId}> وتم إقصاؤه.\nالجولة التالية ستبدأ الآن.` }).catch(() => {});
+
     await startNextRound(channel, game);
   }, 10_000));
 }
@@ -166,9 +184,13 @@ export async function handleRouletteButton(interaction, client, args) {
   finishRouletteAction(game);
   if (game.phase === 'finished') {
     const winner = getWinner(game);
-    if (winner) recordRouletteWinner(game.guildId, winner.id);
-    cancelRoulette(game.guildId, game.channelId);
-    return interaction.reply({ content: `تم إقصاء <@${eliminatedId}>.\n\n🏆 الفائز في الروليت: <@${winner.id}>` });
+    if (winner) {
+      recordRouletteWinner(game.guildId, winner.id);
+      cancelRoulette(game.guildId, game.channelId);
+      await interaction.reply({ content: `تم إقصاء <@${eliminatedId}>.` }).catch(() => {});
+      await sendWinnerMessage(interaction.channel, winner).catch(() => {});
+    }
+    return;
   }
 
   await interaction.reply({ content: eliminatedId ? `تم إقصاء <@${eliminatedId}>. الجولة التالية ستبدأ الآن.` : 'تم تنفيذ اختيارك. الجولة التالية ستبدأ الآن.', ephemeral: true });
