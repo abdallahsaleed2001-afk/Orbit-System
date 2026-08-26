@@ -14,7 +14,7 @@ const paletteMap = new Map(PALETTE.map((color, index) => [color[0] << 16 | color
 const paletteIndex = (pixels, offset) => paletteMap.get((pixels[offset] << 16) | (pixels[offset + 1] << 8) | pixels[offset + 2]) ?? 0;
 
 export function createRouletteGif(game, selectedIndex) {
-  const frames = 24, width = 700, height = 420;
+  const frames = 24, width = 700, height = 500;
   const out = [71, 73, 70, 56, 57, 97];
   writeU16(out, width); writeU16(out, height); out.push(0xF3, 0x00, 0x00);
   for (const color of PALETTE) out.push(...color);
