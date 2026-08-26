@@ -23,7 +23,7 @@ export const commandAliases = {
     'jtc': 'jointocreate', 'jointocreate': 'jointocreate',
     'np': 'nowplaying', 'now': 'nowplaying',
 
-    'فكك': 'fakk', 'اشبك': 'ashbak', 'اسرع': 'asra', 'اسم': 'ism', 'حساب': 'hisab', 'رتب': 'ratib', 'ذاكرة': 'thakira', 'مختلف': 'mokhtalef', 'عكس': 'aks', 'حرف': 'harf',
+    'فكك': 'fakk', 'اشبك': 'ashbak', 'اسرع': 'asra', 'اسم': 'ism', 'حساب': 'hisab', 'رتب': 'ratib', 'ذاكرة': 'thakira', 'مختلف': 'mokhtalef', 'عكس': 'aks', 'حرف': 'harf', 'روليت': 'roulette',
 };
 
 export const subcommandAliases = {
