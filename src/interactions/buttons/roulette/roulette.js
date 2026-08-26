@@ -36,7 +36,8 @@ function wheelAttachment(game, selectedIndex) {
 
 export async function sendJoinMessage(message, game) {
   const endAt = Math.floor((Date.now() + 60_000) / 1000);
-  const sent = await message.edit({ content: `بدأت الروليت!\n\nوقت الدخول: <t:${endAt}:R>\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\n${participantText(game)}`, components: buildRows(game) });
+  // The command message belongs to the user, so never edit it. Create a bot-authored message for the game UI.
+  const sent = await message.channel.send({ content: `بدأت الروليت!\n\nوقت الدخول: <t:${endAt}:R>\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\n${participantText(game)}`, components: buildRows(game) });
   game.messageId = sent.id;
   const key = `${game.guildId}:${game.channelId}`;
   const startedAt = Date.now();
