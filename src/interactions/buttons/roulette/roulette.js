@@ -3,6 +3,7 @@ import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRoulet
 
 const spinTimers = new Map();
 const decisionTimers = new Map();
+const joinCountdowns = new Map();
 
 function participantText(game) {
   return game.participants.map((p, i) => `${i + 1}. <@${p.id}>`).join('\n') || 'لا يوجد مشاركون.';
@@ -34,9 +35,28 @@ function payload(game) {
 }
 
 export async function sendJoinMessage(message, game) {
-  const sent = await message.channel.send({ content: `بدأت الروليت!\n${message.author}\nاضغط انضم للدخول. لديك دقيقة واحدة.`, components: buildRows(game) });
+  const endAt = Math.floor((Date.now() + 60_000) / 1000);
+  const sent = await message.channel.send({ content: `بدأت الروليت!\n\nوقت الدخول: <t:${endAt}:R>\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\n${participantText(game)}`, components: buildRows(game) });
   game.messageId = sent.id;
+  const key = `${game.guildId}:${game.channelId}`;
+  const startedAt = Date.now();
+  const updateCountdown = setInterval(async () => {
+    if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'join') {
+      clearInterval(updateCountdown);
+      joinCountdowns.delete(key);
+      return;
+    }
+    const remaining = Math.max(0, 60 - Math.floor((Date.now() - startedAt) / 1000));
+    await sent.edit({ content: `بدأت الروليت!\n\nوقت الدخول: **${remaining} ثانية**\nستنطلق الجولة بعد انتهاء وقت الدخول.\n\n${participantText(game)}`, components: buildRows(game) }).catch(() => {});
+    if (remaining <= 0) {
+      clearInterval(updateCountdown);
+      joinCountdowns.delete(key);
+    }
+  }, 1000);
+  joinCountdowns.set(key, updateCountdown);
   game.onJoinTimeout = async () => {
+    clearInterval(updateCountdown);
+    joinCountdowns.delete(key);
     if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'join') return;
     if (game.participants.length < 2) {
       await sent.edit({ content: 'انتهت الروليت — يجب أن يشارك شخصان على الأقل.', components: [] }).catch(() => {});
@@ -68,11 +88,11 @@ function startDecisionTimer(message, game) {
       const winner = getWinner(game);
       if (winner) recordRouletteWinner(game.guildId, winner.id);
       cancelRoulette(game.guildId, game.channelId);
-      await message.edit({ content: `انتهى وقت <@${timedOutId}> وتم إخراجه من اللعبة.\n\nالفائز في الروليت: ${winner ? `<@${winner.id}>` : 'لا يوجد فائز'}`, components: [] }).catch(() => {});
+      await message.edit({ content: `تم طرد <@${timedOutId}>\n\nالفائز في الروليت: ${winner ? `<@${winner.id}>` : 'لا يوجد فائز'}`, components: [] }).catch(() => {});
       return;
     }
-    await message.edit({ content: `انتهى وقت <@${timedOutId}> وتم إخراجه من اللعبة.\n\nالجولة التالية...\n\n${participantText(game)}`, components: buildRows(game) }).catch(() => {});
-    setTimeout(() => spinRound(message, game).catch(() => {}), 900);
+    await message.edit({ content: `تم طرد <@${timedOutId}>\nسيتم بدء الجولة التالية بعد قليل.\n\n${participantText(game)}`, components: [] }).catch(() => {});
+    setTimeout(() => spinRound(message, game).catch(() => {}), 1800);
   }, 10_000));
 }
 
@@ -146,11 +166,16 @@ export async function handleRouletteButton(interaction, client, args) {
     const winner = getWinner(game);
     if (winner) recordRouletteWinner(game.guildId, winner.id);
     cancelRoulette(game.guildId, game.channelId);
-    await interaction.update({ content: `الفائز في الروليت: <@${winner.id}>`, components: [] });
+    await interaction.update({ content: `تم طرد <@${eliminatedId}>\n\nالفائز في الروليت: <@${winner.id}>`, components: [] });
     return;
   }
-  await interaction.update({ content: `الجولة التالية...\n\n${participantText(game)}`, components: buildRows(game) });
-  setTimeout(() => spinRound(message, game).catch(() => {}), 900);
+  if (eliminatedId) {
+    await interaction.update({ content: `تم طرد <@${eliminatedId}>\nسيتم بدء الجولة التالية بعد قليل.`, components: [] });
+    setTimeout(() => spinRound(message, game).catch(() => {}), 1800);
+    return;
+  }
+  await interaction.update({ content: `سيتم بدء الجولة التالية بعد قليل.\n\n${participantText(game)}`, components: [] });
+  setTimeout(() => spinRound(message, game).catch(() => {}), 1800);
 }
 
 export default [
