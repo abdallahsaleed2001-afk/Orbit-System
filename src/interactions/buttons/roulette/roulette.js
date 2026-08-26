@@ -27,7 +27,11 @@ function buildRows(game) {
 }
 
 function wheelAttachment(game, selectedIndex) {
-  return new AttachmentBuilder(createRouletteGif(game.participants, selectedIndex), { name: 'roulette.gif' });
+  const gif = createRouletteGif(game.participants, selectedIndex);
+  if (!Buffer.isBuffer(gif) || gif.length < 100 || gif.subarray(0, 6).toString('ascii') !== 'GIF89a') {
+    throw new Error(`Invalid roulette GIF generated (${gif?.length ?? 0} bytes)`);
+  }
+  return new AttachmentBuilder(gif, { name: `roulette-${game.id}.gif`, description: 'Roulette wheel animation' });
 }
 
 function joinContent(game) {
@@ -82,16 +86,44 @@ function startDecisionTimer(message, game) {
   }, 10_000));
 }
 
+async function sendWheelGif(message, game, selectedIndex) {
+  const attachment = wheelAttachment(game, selectedIndex);
+  const payload = {
+    content: 'العجلة تدور...',
+    files: [attachment],
+  };
+
+  try {
+    return await message.channel.send(payload);
+  } catch (firstError) {
+    console.error('[roulette] Failed to send wheel GIF:', firstError);
+    // Retry with a fresh AttachmentBuilder/Buffer. This also avoids reusing an attachment stream if Discord rejected it.
+    const retryAttachment = wheelAttachment(game, selectedIndex);
+    try {
+      return await message.channel.send({ content: 'العجلة تدور...', files: [retryAttachment] });
+    } catch (secondError) {
+      console.error('[roulette] Retry failed to send wheel GIF:', secondError);
+      throw secondError;
+    }
+  }
+}
+
 export async function spinRound(message, game) {
   clearDecisionTimer(game);
   const result = beginRouletteRound(game);
   if (!result) return;
 
-  // Send the GIF as its own bot message. This prevents later edits to the game message from removing the attachment.
-  const spinMessage = await message.channel.send({
-    content: 'العجلة تدور...',
-    files: [wheelAttachment(game, result.index)],
-  }).catch(() => null);
+  game.phase = 'spinning';
+  try {
+    await sendWheelGif(message, game, result.index);
+  } catch (error) {
+    // Never leave the game stuck in the spinning phase if the attachment cannot be sent.
+    game.phase = 'decision';
+    await message.edit({ content: `توقفت العجلة على: <@${result.participant.id}>\n\n${playerCount(game)}`, components: buildRows(game) }).catch(() => {});
+    console.error('[roulette] Wheel animation unavailable:', error);
+    startDecisionTimer(message, game);
+    return;
+  }
 
   await message.edit({ content: `العجلة تدور...\n\n${playerCount(game)}`, components: [], attachments: [] }).catch(() => {});
 
@@ -100,11 +132,11 @@ export async function spinRound(message, game) {
   const timer = setTimeout(async () => {
     if (getRoulette(game.guildId, game.channelId) !== game) return;
     game.phase = 'decision';
-    await message.edit({ content: `توقفت العجلة على: <@${result.participant.id}>\n\n${playerCount(game)}`, components: buildRows(game) }).catch(() => {});
+    await message.edit({ content: `توقفت العجلة على: <@${result.participant.id}>\n\n${playerCount(game)}`, components: buildRows(game), attachments: [] }).catch(() => {});
     startDecisionTimer(message, game);
   }, 3600);
   spinTimers.set(timerKey, timer);
-  return spinMessage;
+  return true;
 }
 
 function statsText(user, stats) {
