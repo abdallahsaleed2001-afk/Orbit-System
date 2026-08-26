@@ -8,7 +8,8 @@ export default {
     .setDescription('Start a roulette game'),
   category: 'Fun',
   prefixOnly: true,
-  async execute(interaction) {
+
+  async prefixExecute(interaction) {
     const result = createRoulette(
       interaction.guildId,
       interaction.channel.id,
@@ -16,11 +17,18 @@ export default {
     );
 
     if (result.error === 'active') {
-      return interaction.reply({ content: 'توجد جولة روليت نشطة بالفعل في هذه القناة.' });
+      await interaction.channel.send({
+        content: 'توجد جولة روليت نشطة بالفعل في هذه القناة.',
+      });
+      return;
     }
 
-    await interaction.reply({ content: 'جاري تجهيز الروليت...' });
-    const message = await interaction.fetchReply();
+    // Prefix commands use a mock interaction, so create a real Discord
+    // message first and let the roulette UI edit that message.
+    const message = await interaction.channel.send({
+      content: 'جاري تجهيز الروليت...',
+    });
+
     await sendJoinMessage(message, result.game);
   },
 };
