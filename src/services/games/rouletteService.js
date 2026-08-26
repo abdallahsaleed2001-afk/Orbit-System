@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 const games = new Map();
 const playerStats = new Map();
-const JOIN_MS = 12_000;
+const JOIN_MS = 60_000;
 const MAX_PLAYERS = 20;
 
 function key(guildId, channelId) { return `${guildId}:${channelId}`; }
