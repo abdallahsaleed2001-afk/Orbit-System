@@ -50,6 +50,7 @@ function drawFrame(width, height, count, rotation) {
   const twoPi = Math.PI * 2;
   const sector = twoPi / count;
   pixels.fill(0);
+
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const dx = x - cx;
@@ -58,19 +59,22 @@ function drawFrame(width, height, count, rotation) {
       if (r > radius) continue;
       let angle = Math.atan2(dy, dx) + Math.PI / 2 - rotation;
       while (angle < 0) angle += twoPi;
-      const index = Math.floor((angle % twoPi) / sector);
-      pixels[y * width + x] = 1 + (index % 3);
+      const sectorIndex = Math.floor((angle % twoPi) / sector);
+      pixels[y * width + x] = 1 + (sectorIndex % 3);
     }
   }
+
   for (let y = Math.floor(cy - 10); y <= Math.ceil(cy + 10); y++) {
     for (let x = Math.floor(cx - 10); x <= Math.ceil(cx + 10); x++) {
-      if ((x - cx) ** 2 + (y - cy) ** 2 <= 10 ** 2) pixels[y * width + x] = 0;
+      if ((x - cx) ** 2 + (y - cy) ** 2 <= 100) pixels[y * width + x] = 0;
     }
   }
+
   for (let y = 2; y < 18; y++) {
     const half = Math.max(1, Math.floor((y - 2) / 3));
     for (let x = Math.floor(cx - half); x <= Math.ceil(cx + half); x++) pixels[y * width + x] = 0;
   }
+
   return pixels;
 }
 
@@ -80,23 +84,40 @@ export function createRouletteGif(participants, selectedIndex) {
   const frames = 18;
   const palette = [0x15171a, 0x5865f2, 0xed4245, 0x57f287];
   const out = [71, 73, 70, 56, 57, 97];
+
   writeU16(out, width);
   writeU16(out, height);
-  out.push(0xf0, 0x00, 0x00);
-  for (const color of palette) out.push((color >> 16) & 255, (color >> 8) & 255, color & 255);
+  // Global color table: 4 entries (2 bits per pixel).
+  out.push(0xf1, 0x00, 0x00);
+  for (const color of palette) {
+    out.push((color >> 16) & 255, (color >> 8) & 255, color & 255);
+  }
+
+  // Netscape loop extension so the GIF itself is animated/repeatable.
+  out.push(0x21, 0xff, 0x0b);
+  out.push(...Buffer.from('NETSCAPE2.0', 'ascii'));
+  out.push(0x03, 0x01, 0x00, 0x00, 0x00);
+
   const count = Math.max(2, participants.length);
   const start = Math.random() * Math.PI * 2;
   const target = ((selectedIndex + 0.5) / count) * Math.PI * 2;
+
   for (let frame = 0; frame < frames; frame++) {
     const t = frame / (frames - 1);
     const eased = 1 - Math.pow(1 - t, 3);
     const rotation = start + Math.PI * 2 * 5.5 * eased + target;
     const delay = Math.max(3, Math.round(4 + 8 * t));
+
     out.push(0x21, 0xf9, 0x04, 0x08, delay & 255, (delay >> 8) & 255, 0x00, 0x00);
     out.push(0x2c);
-    writeU16(out, 0); writeU16(out, 0); writeU16(out, width); writeU16(out, height); out.push(0x00);
+    writeU16(out, 0);
+    writeU16(out, 0);
+    writeU16(out, width);
+    writeU16(out, height);
+    out.push(0x00);
     out.push(...encodeGifFrame(drawFrame(width, height, count, rotation), 2));
   }
+
   out.push(0x3b);
   return Buffer.from(out);
 }
