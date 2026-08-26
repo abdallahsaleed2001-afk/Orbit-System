@@ -9,7 +9,8 @@ function buildRows(game) {
   if (game.phase === 'join') {
     rows.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`roulette_join:${game.id}`).setLabel('انضم').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`roulette_stats:${game.id}`).setLabel('إحصائيات اللاعب').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`roulette_stats:${game.id}`).setLabel('إحصائياتي').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`roulette_leave_join:${game.id}`).setLabel('انسحاب').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`roulette_stop:${game.id}`).setLabel('إيقاف').setStyle(ButtonStyle.Secondary),
     ));
     return rows;
@@ -19,7 +20,7 @@ function buildRows(game) {
   const buttons = game.participants.map(p => new ButtonBuilder().setCustomId(`roulette_target:${game.id}:${p.id}`).setLabel(p.username.slice(0, 80)).setStyle(ButtonStyle.Secondary).setDisabled(p.id === selected));
   for (let i = 0; i < buttons.length && rows.length < 4; i += 5) rows.push(new ActionRowBuilder().addComponents(...buttons.slice(i, i + 5)));
   rows.push(new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`roulette_leave:${game.id}`).setLabel('انسحب').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`roulette_leave:${game.id}`).setLabel('انسحاب').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`roulette_random:${game.id}`).setLabel('اطرد شخصًا عشوائيًا').setStyle(ButtonStyle.Secondary),
   ));
   return rows.slice(0, 5);
@@ -30,19 +31,16 @@ function wheelAttachment(game, selectedIndex) {
 }
 
 function joinContent(game) {
-  return `بدأت الروليت!\n\nوقت الدخول: <t:${game.joinEndsAt}:R>\nعدد المشاركين: **${game.participants.length}**\nاضغط انضم للدخول.`;
+  return `بدأت الروليت!\n\nوقت الدخول: <t:${game.joinEndsAt}:R>\nعدد اللاعبين: **${game.participants.length}/100**`;
 }
 
 function playerCount(game) {
-  return `عدد المشاركين: **${game.participants.length}**`;
+  return `عدد اللاعبين: **${game.participants.length}/100**`;
 }
 
 export async function sendJoinMessage(message, game) {
   game.joinEndsAt = Math.floor((Date.now() + 60_000) / 1000);
-  const sent = await message.channel.send({
-    content: joinContent(game),
-    components: buildRows(game),
-  });
+  const sent = await message.channel.send({ content: joinContent(game), components: buildRows(game) });
   game.messageId = sent.id;
   game.onJoinTimeout = async () => {
     if (getRoulette(game.guildId, game.channelId) !== game || game.phase !== 'join') return;
@@ -120,6 +118,13 @@ export async function handleRouletteButton(interaction, client, args) {
     await interaction.update({ content: joinContent(game), components: buildRows(game) });
     return;
   }
+  if (action === 'leave_join') {
+    if (!isParticipant(game, interaction.user.id)) return interaction.reply({ content: 'أنت لست داخل اللعبة.', ephemeral: true });
+    if (game.phase !== 'join') return interaction.reply({ content: 'انتهى وقت الدخول.', ephemeral: true });
+    removeRoulettePlayer(game, interaction.user.id);
+    await interaction.update({ content: joinContent(game), components: buildRows(game) });
+    return;
+  }
   if (action === 'stop') {
     if (!isParticipant(game, interaction.user.id)) return interaction.reply({ content: 'فقط المشاركون يستطيعون إيقاف الروليت.', ephemeral: true });
     clearDecisionTimer(game);
@@ -171,6 +176,7 @@ export default [
   { name: 'roulette_stop', execute: handleRouletteButton },
   { name: 'roulette_target', execute: handleRouletteButton },
   { name: 'roulette_leave', execute: handleRouletteButton },
+  { name: 'roulette_leave_join', execute: handleRouletteButton },
   { name: 'roulette_random', execute: handleRouletteButton },
   { name: 'roulette_stats', execute: handleRouletteButton },
 ];
