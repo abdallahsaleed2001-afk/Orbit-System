@@ -25,7 +25,6 @@ function buildRows(game) {
   rows.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`roulette_leave:${game.id}`).setLabel('انسحب').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`roulette_random:${game.id}`).setLabel('اطرد شخصًا عشوائيًا').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`roulette_stats:${game.id}`).setLabel('إحصائيات اللاعب').setStyle(ButtonStyle.Secondary),
   ));
   return rows.slice(0, 5);
 }
@@ -121,6 +120,7 @@ export async function handleRouletteButton(interaction, client, args) {
     return;
   }
   if (action === 'stats') {
+    if (game.phase !== 'join') return interaction.reply({ content: 'انتهى وقت عرض الإحصائيات.', ephemeral: true });
     if (!isParticipant(game, interaction.user.id)) return interaction.reply({ content: 'إحصائيات الروليت متاحة للمشاركين فقط.', ephemeral: true });
     const stats = getRoulettePlayerStats(interaction.guildId, interaction.user.id);
     return interaction.reply({ content: statsText(interaction.user, stats), ephemeral: true });
