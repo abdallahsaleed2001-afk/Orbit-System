@@ -86,7 +86,15 @@ export async function spinRound(message, game) {
   clearDecisionTimer(game);
   const result = beginRouletteRound(game);
   if (!result) return;
-  await message.edit({ content: `العجلة تدور...\n\n${playerCount(game)}`, components: [], files: [wheelAttachment(game, result.index)] }).catch(() => {});
+
+  // Send the GIF as its own bot message. This prevents later edits to the game message from removing the attachment.
+  const spinMessage = await message.channel.send({
+    content: 'العجلة تدور...',
+    files: [wheelAttachment(game, result.index)],
+  }).catch(() => null);
+
+  await message.edit({ content: `العجلة تدور...\n\n${playerCount(game)}`, components: [], attachments: [] }).catch(() => {});
+
   const timerKey = `${game.guildId}:${game.channelId}`;
   clearTimeout(spinTimers.get(timerKey));
   const timer = setTimeout(async () => {
@@ -96,6 +104,7 @@ export async function spinRound(message, game) {
     startDecisionTimer(message, game);
   }, 3600);
   spinTimers.set(timerKey, timer);
+  return spinMessage;
 }
 
 function statsText(user, stats) {
