@@ -1,4 +1,4 @@
-import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { addRoulettePlayer, beginRouletteRound, chooseRandomTarget, chooseRouletteTarget, finishRouletteAction, getRoulette, getRoulettePlayerStats, getWinner, isParticipant, isSelected, removeRoulettePlayer, cancelRoulette, recordRouletteElimination, recordRouletteWinner } from '../../../services/games/rouletteService.js';
 import { createRouletteGif } from '../../../services/games/rouletteGif.js';
 import { createRouletteWinnerImage } from '../../../services/games/rouletteWinnerImage.js';
@@ -17,9 +17,19 @@ function buildRows(game) {
     return rows;
   }
   if (game.phase !== 'decision') return [];
+
+  // The player whose turn it is is never shown as a target option.
   const selected = game.selectedId;
-  const buttons = game.participants.map(p => new ButtonBuilder().setCustomId(`roulette_target:${game.id}:${p.id}`).setLabel(p.username.slice(0, 80)).setStyle(ButtonStyle.Secondary).setDisabled(p.id === selected));
-  for (let i = 0; i < buttons.length && rows.length < 4; i += 5) rows.push(new ActionRowBuilder().addComponents(...buttons.slice(i, i + 5)));
+  const buttons = game.participants
+    .filter(p => p.id !== selected)
+    .map(p => new ButtonBuilder()
+      .setCustomId(`roulette_target:${game.id}:${p.id}`)
+      .setLabel(p.username.slice(0, 80))
+      .setStyle(ButtonStyle.Secondary));
+
+  for (let i = 0; i < buttons.length && rows.length < 4; i += 5) {
+    rows.push(new ActionRowBuilder().addComponents(...buttons.slice(i, i + 5)));
+  }
   rows.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`roulette_leave:${game.id}`).setLabel('انسحاب').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`roulette_random:${game.id}`).setLabel('اطرد شخصًا عشوائيًا').setStyle(ButtonStyle.Secondary),
@@ -45,7 +55,7 @@ function statsText(user, stats) {
 
 async function sendRoundMessage(channel, game, result) {
   const gif = createRouletteGif(game, result.index);
-  const attachment = new AttachmentBuilder(gif, { name: `roulette-round-${game.round}.gif`, description: 'Orbit System animated roulette round' });
+  const attachment = new AttachmentBuilder(gif, { name: `roulette-round-${game.round}.gif`, description: 'INFINITY GAMES animated roulette round' });
   const message = await channel.send({ content: roundContent(game, result.participant), files: [attachment], components: buildRows(game) });
   game.currentMessageId = message.id;
   return message;
@@ -53,13 +63,11 @@ async function sendRoundMessage(channel, game, result) {
 
 async function sendWinnerMessage(channel, winner) {
   const image = createRouletteWinnerImage(winner);
-  const attachment = new AttachmentBuilder(image, { name: 'roulette-winner.png', description: 'Orbit System roulette winner' });
-  const embed = new EmbedBuilder()
-    .setTitle('🏆 الفائز في الروليت')
-    .setDescription(`**${winner.username}**\n<@${winner.id}>`)
-    .setImage('attachment://roulette-winner.png');
-  if (winner.avatar) embed.setThumbnail(winner.avatar);
-  await channel.send({ embeds: [embed], files: [attachment] });
+  const attachment = new AttachmentBuilder(image, { name: 'roulette-winner.png', description: 'INFINITY GAMES roulette winner' });
+  await channel.send({
+    content: `🏆 **الفائز في الروليت**\n**${winner.username}**\n<@${winner.id}>`,
+    files: [attachment],
+  });
 }
 
 async function startNextRound(channel, game) {
