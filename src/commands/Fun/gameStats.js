@@ -1,4 +1,4 @@
-import { getGameStats } from '../../services/games/gameStatsService.js';
+import { getGameStats, GAME_NAMES } from '../../services/games/gameStatsService.js';
 
 const GAMES_ROLE_ID = '1543013490313400340';
 
@@ -16,13 +16,15 @@ async function runGameStats(interaction) {
     if (!guildId) return interaction.reply({ content: 'لا يمكن عرض الإحصائيات هنا.' });
 
     const stats = await getGameStats(guildId, interaction.user.id);
+    const lines = Object.entries(GAME_NAMES).map(([game, name]) =>
+        `🎮 **${name}** — 🏆 ${stats[game].wins} فوز | ❌ ${stats[game].losses} خسارة`
+    );
 
     return interaction.reply({
         content: [
             `**INFINITY GAMES — إحصائيات ${interaction.user.username}**`,
             '',
-            `💣 **لغم** — 🏆 ${stats.mines.wins} فوز | ❌ ${stats.mines.losses} خسارة`,
-            `❌⭕ **إكس أو** — 🏆 ${stats.xo.wins} فوز | ❌ ${stats.xo.losses} خسارة`,
+            ...lines,
         ].join('\n'),
     });
 }
