@@ -1,4 +1,5 @@
 import { logger } from '../../utils/logger.js';
+import { recordGameResult } from './gameStatsService.js';
 
 const GAME_TTL_MS = 20_000;
 const activeGames = new Map();
@@ -65,7 +66,7 @@ export function startGame(guildId, channelId, type) {
     const sequence = Array.from({ length: 5 }, () => Math.floor(Math.random() * 10)).join('');
     game = { type, answer: sequence, prompt: `🧠 **ذاكرة!**\nاحفظ الرقم: **${sequence}**\nسيختفي خلال ثانيتين...` };
   } else return { error: 'unknown' };
-  game.startedAt = Date.now(); game.expiresAt = Date.now() + GAME_TTL_MS; activeGames.set(k, game); return game;
+  game.startedAt = Date.now(); game.expiresAt = Date.now() + GAME_TTL_MS; game.participants = new Set(); activeGames.set(k, game); return game;
 }
 
 export function getActiveGame(guildId, channelId) { return activeGames.get(key(guildId, channelId)) || null; }
@@ -79,10 +80,19 @@ export function checkAnswer(game, content) {
 export async function handleGameMessage(message) {
   const game = getActiveGame(message.guild.id, message.channel.id);
   if (!game) return false;
-  if (Date.now() > game.expiresAt) { cancelGame(message.guild.id, message.channel.id); await message.channel.send('⏱️ انتهى وقت الجولة. حاول مرة ثانية!').catch(() => {}); return true; }
+  if (Date.now() > game.expiresAt) {
+    const losers = [...game.participants];
+    cancelGame(message.guild.id, message.channel.id);
+    if (losers.length) await recordGameResult(message.guild.id, game.type, [], losers);
+    await message.channel.send('⏱️ انتهى وقت الجولة. حاول مرة ثانية!').catch(() => {});
+    return true;
+  }
   if (message.author.bot) return true;
+  game.participants.add(message.author.id);
   if (!checkAnswer(game, message.content)) return true;
   cancelGame(message.guild.id, message.channel.id);
+  const losers = [...game.participants].filter(id => id !== message.author.id);
+  await recordGameResult(message.guild.id, game.type, [message.author.id], losers);
   await message.channel.send(`🏆 **${message.author} فاز!**`).catch(() => {});
   return true;
 }
