@@ -2,8 +2,10 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { createMines, MINES_JOIN_MS, startMines, endMines } from '../../services/games/minesService.js';
 import { grid, startMinesTurnTimer } from '../../interactions/buttons/mines/mines.js';
 
+const GAMES_ROLE_ID = '1543013490313400340';
 const getGuildId = interaction => interaction.guildId || interaction.guild?.id;
 const getChannelId = interaction => interaction.channelId || interaction.channel?.id;
+const hasGamesRole = interaction => interaction.member?.roles?.cache?.has(GAMES_ROLE_ID) || interaction.member?.roles?.includes?.(GAMES_ROLE_ID);
 
 const lobbyRows = game => [new ActionRowBuilder().addComponents(
   new ButtonBuilder().setCustomId(`mines_join:${game.guildId}:${game.channelId}`).setLabel('انضم').setStyle(ButtonStyle.Success),
@@ -11,6 +13,7 @@ const lobbyRows = game => [new ActionRowBuilder().addComponents(
 )];
 
 async function runMines(interaction) {
+  if (!hasGamesRole(interaction)) return interaction.reply({ content: 'ليس لديك صلاحية استخدام ألعاب البوت.', ephemeral: true });
   const guildId = getGuildId(interaction);
   const channelId = getChannelId(interaction);
   if (!guildId || !channelId) return interaction.reply({ content: 'لا يمكن تشغيل اللعبة هنا.' });
