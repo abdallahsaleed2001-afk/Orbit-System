@@ -16,12 +16,7 @@ import { processAutoMod } from '../services/security/securityService.js';
 import { getStaffData, incrementStaffActivity, recordTicketLog } from '../services/staffService.js';
 import { handleCustomTrigger } from '../services/customTriggerService.js';
 import { handleGameMessage } from '../services/games/gameService.js';
-import {
-  getCountingGameConfig,
-  saveCountingGameConfig,
-  isValidCountingMessage,
-  recordCorrectCount,
-} from '../services/countingGameService.js';
+import { getCountingGameConfig, saveCountingGameConfig, isValidCountingMessage, recordCorrectCount } from '../services/countingGameService.js';
 import { getColorByNumber, isColorSelection, parseColorNumber } from '../services/colorService.js';
 
 const MESSAGE_XP_RATE_LIMIT_ATTEMPTS = 12;
@@ -35,36 +30,25 @@ export default {
   async execute(message, client) {
     try {
       if (!message.guild) return;
-
       if (message.author.bot) {
         await handleTicketClosedLog(message);
         return;
       }
-
       const gameHandled = await handleGameMessage(message, client);
       if (gameHandled) return;
-
       await trackStaffMessage(message);
-
       const customTriggerHandled = await handleCustomTrigger(message, client);
       if (customTriggerHandled) return;
-
       const autoReplied = await handleAutoReply(message, client);
       if (autoReplied) return;
-
       await handleAutoReaction(message, client);
-
       const colorHandled = await handleColorSelection(message, client);
       if (colorHandled) return;
-
       const autoModTriggered = await processAutoMod(message, client);
       if (autoModTriggered) return;
-
       logger.debug(`Message received from ${message.author.tag}: ${message.content}`);
-
       const countingProcessed = await handleCountingGame(message, client);
       if (countingProcessed) return;
-
       await handlePrefixCommand(message, client);
       await handleLeveling(message, client);
     } catch (error) {
@@ -77,14 +61,11 @@ async function handleAutoReply(message, client) {
   try {
     const content = String(message.content ?? '');
     if (!content) return false;
-
     const config = await getGuildConfig(client, message.guild.id);
     const rules = Array.isArray(config?.autoReplies) ? config.autoReplies : [];
     if (!rules.length) return false;
-
     const rule = rules.find((item) => String(item?.trigger ?? '') === content);
     if (!rule || !String(rule.response ?? '').trim()) return false;
-
     await message.channel.send({ content: String(rule.response).slice(0, 2000) });
     return true;
   } catch (error) {
@@ -96,11 +77,22 @@ async function handleAutoReply(message, client) {
 async function handleAutoReaction(message, client) {
   try {
     const config = await getGuildConfig(client, message.guild.id);
-    const autoReaction = config?.autoReaction;
-    if (!autoReaction?.enabled || !autoReaction.channelId || !autoReaction.reaction) return false;
-    if (message.channel.id !== autoReaction.channelId) return false;
+    const rawRooms = config?.autoReaction;
+    const rooms = Array.isArray(rawRooms)
+      ? rawRooms
+      : (rawRooms?.enabled && rawRooms?.channelId && rawRooms?.reaction
+        ? [{ slot: 1, enabled: true, channelId: rawRooms.channelId, reaction: rawRooms.reaction }]
+        : []);
 
-    await message.react(autoReaction.reaction);
+    const room = rooms.find((item) =>
+      item?.enabled === true &&
+      item?.channelId &&
+      item?.reaction &&
+      item.channelId === message.channel.id
+    );
+    if (!room) return false;
+
+    await message.react(String(room.reaction));
     return true;
   } catch (error) {
     logger.error('Error handling auto reaction:', {
@@ -116,27 +108,21 @@ async function handleAutoReaction(message, client) {
 async function handleColorSelection(message, client) {
   try {
     if (!isColorSelection(message.content)) return false;
-
     const number = parseColorNumber(message.content);
     if (!number || number < 1 || number > 100) return false;
-
     const color = await getColorByNumber(client, message.guild.id, number);
     if (!color) return false;
     if (message.channel.id !== (await client.db.get(`colors:${message.guild.id}`, null))?.channelId) return false;
-
     const config = await client.db.get(`colors:${message.guild.id}`, null);
     const roleId = config?.roleIds?.[number - 1];
     if (!roleId) return false;
-
     const member = message.member || await message.guild.members.fetch(message.author.id);
     const role = message.guild.roles.cache.get(roleId) || await message.guild.roles.fetch(roleId).catch(() => null);
     if (!role) return false;
-
     const colorRoleIds = new Set(config.roleIds || []);
     const oldRoles = member.roles.cache.filter((item) => colorRoleIds.has(item.id));
     if (oldRoles.size) await member.roles.remove([...oldRoles.values()], 'Color selection').catch(() => {});
     await member.roles.add(role, 'Color selection');
-
     const reply = await message.channel.send(`🎨 ${message.author} تم تغيير لونك إلى **${color.hex}** — اللون رقم **${number}**.`);
     setTimeout(() => reply.delete().catch(() => {}), 7000);
     await message.delete().catch(() => {});
@@ -151,16 +137,11 @@ async function trackStaffMessage(message) {
   try {
     const now = Date.now();
     let cached = staffCache.get(message.guild.id);
-
     if (!cached || now - cached.updatedAt >= STAFF_CACHE_TTL_MS) {
       const data = await getStaffData(message.guild.id);
-      cached = {
-        updatedAt: now,
-        staffIds: new Set(Object.keys(data.members || {})),
-      };
+      cached = { updatedAt: now, staffIds: new Set(Object.keys(data.members || {})) };
       staffCache.set(message.guild.id, cached);
     }
-
     if (!cached.staffIds.has(message.author.id)) return;
     await incrementStaffActivity(message.guild.id, message.author.id, 'messages');
   } catch (error) {
@@ -171,34 +152,25 @@ async function trackStaffMessage(message) {
 async function handleTicketClosedLog(message) {
   try {
     if (!message.embeds?.length) return;
-
     const embed = message.embeds.find((item) => item.title?.trim() === 'تم إغلاق تذكرة');
     if (!embed) return;
-
     const fields = Array.isArray(embed.fields) ? embed.fields : [];
     const getField = (...names) => {
       const field = fields.find((item) => names.includes(String(item.name || '').trim()));
       return field?.value?.trim() || null;
     };
-
     const channelName = getField('اسم القناة');
     const claimedBy = getField('مستلم التذكرة');
     const closedBy = getField('تم الإغلاق بواسطة');
     if (!channelName || !claimedBy) return;
-
     if (/لم\s*يتم\s*استلامها/i.test(claimedBy)) return;
-
     const mentionMatch = claimedBy.match(/<@!?([0-9]{15,25})>/);
     const idMatch = claimedBy.match(/\b([0-9]{15,25})\b/);
     const staffId = mentionMatch?.[1] || idMatch?.[1];
     if (!staffId) {
-      logger.warn(`Ticket log found but claimed staff ID could not be parsed: ${claimedBy}`, {
-        guildId: message.guild.id,
-        messageId: message.id,
-      });
+      logger.warn(`Ticket log found but claimed staff ID could not be parsed: ${claimedBy}`, { guildId: message.guild.id, messageId: message.id });
       return;
     }
-
     const ticketType = channelName.split('-')[0] || null;
     const result = await recordTicketLog(message.guild.id, {
       messageId: message.id,
@@ -208,15 +180,8 @@ async function handleTicketClosedLog(message) {
       closedBy,
       closedAt: embed.timestamp || message.createdAt?.toISOString() || null,
     });
-
     if (result.recorded) {
-      logger.info(`Ticket handled recorded for staff ${staffId}: ${channelName}`, {
-        event: 'staff.ticket_handled',
-        guildId: message.guild.id,
-        staffId,
-        ticketId: channelName,
-        sourceMessageId: message.id,
-      });
+      logger.info(`Ticket handled recorded for staff ${staffId}: ${channelName}`, { event: 'staff.ticket_handled', guildId: message.guild.id, staffId, ticketId: channelName, sourceMessageId: message.id });
     }
   } catch (error) {
     logger.error('Error processing ticket closed log:', error);
@@ -227,20 +192,14 @@ async function handlePrefixCommand(message, client) {
   try {
     const guildConfig = await getGuildConfig(client, message.guild.id);
     const configuredPrefix = guildConfig?.prefix || getCommandPrefix();
-
     const gameParsed = parsePrefixCommand(message.content, '-');
     const normalParsed = parsePrefixCommand(message.content, configuredPrefix);
     const gameCommandName = gameParsed?.commandName?.trim();
     const normalCommandName = normalParsed?.commandName?.trim();
     const isGameSystemMessage = Boolean(gameParsed && GAME_SYSTEM_COMMANDS.has(gameCommandName));
-
-    // Game-system commands are accepted only with the permanent `-` prefix.
-    // This also prevents an old/custom prefix such as `!` from exposing them.
     if (!isGameSystemMessage && normalParsed && GAME_SYSTEM_COMMANDS.has(normalCommandName)) return;
-
     const parsed = isGameSystemMessage ? gameParsed : normalParsed;
     if (!parsed) return;
-
     let { commandName, args } = parsed;
     const prefix = isGameSystemMessage ? '-' : configuredPrefix;
     const musicPrefixShortcut = commandName.toLowerCase();
@@ -249,13 +208,11 @@ async function handlePrefixCommand(message, client) {
       commandName = 'music';
       args = [musicPrefixShortcut, ...args];
     }
-
     logger.info(`Prefix command detected: ${commandName}, args: ${args.join(', ')}`);
     const resolvedCommandName = resolveCommandAlias(commandName);
     logger.info(`Resolved command name: ${resolvedCommandName}`);
     const command = client.commands.get(resolvedCommandName);
     if (!command) return;
-
     if (isMaintenanceMode() && !isBotOwner(message.author.id)) {
       await message.channel.send({ embeds: [createEmbed({ title: 'Maintenance Mode', description: getBotMessage('maintenanceMode'), color: 'warning' })] }).catch(() => {});
       return;
@@ -264,7 +221,6 @@ async function handlePrefixCommand(message, client) {
       await message.channel.send({ embeds: [createEmbed({ title: 'Feature Disabled', description: getBotMessage('commandDisabled'), color: 'error' })] }).catch(() => {});
       return;
     }
-
     const restriction = getPrefixRestriction(command, args, resolveSubcommandAlias);
     if (!supportsPrefixExecution(command) || restriction.blocked) {
       if (restriction.blocked && restriction.reason) await message.channel.send({ embeds: [createEmbed({ title: 'Slash Command Only', description: `${restriction.reason}\nUse \`/${resolvedCommandName}\` instead.`, color: 'info' })] }).catch(() => {});
@@ -274,7 +230,6 @@ async function handlePrefixCommand(message, client) {
       await message.channel.send({ embeds: [createEmbed({ title: 'Command Disabled', description: 'This command has been disabled for this server.', color: 'error' })] }).catch(() => {});
       return;
     }
-
     const mockInteractionForProtection = { guildId: message.guild.id, user: message.author };
     const abuseProtection = await enforceAbuseProtection(mockInteractionForProtection, command, resolvedCommandName);
     if (!abuseProtection.allowed) {
@@ -282,7 +237,6 @@ async function handlePrefixCommand(message, client) {
       await message.channel.send({ embeds: [createEmbed({ title: 'Command Cooldown', description: `This command is on cooldown. Please wait ${formattedCooldown} before trying again.`, color: 'error' })] }).catch(() => {});
       return;
     }
-
     logger.info(`Executing prefix command: ${prefix}${commandName} (resolved to ${resolvedCommandName}) by ${message.author.tag}`);
     await executePrefixCommand(command, message, args, client, prefix, guildConfig);
   } catch (error) {
@@ -294,7 +248,6 @@ async function handleCountingGame(message, client) {
   try {
     const config = await getCountingGameConfig(client, message.guild.id);
     if (!config.enabled || !config.channelId || message.channel.id !== config.channelId) return false;
-
     const content = message.content.trim();
     const validCount = isValidCountingMessage(content, config);
     const invalidAttempt = !validCount || message.author.id === config.lastUserId;
@@ -318,7 +271,6 @@ async function handleLeveling(message, client) {
     const rateLimitKey = `xp-event:${message.guild.id}:${message.author.id}`;
     const canProcess = await checkRateLimit(rateLimitKey, MESSAGE_XP_RATE_LIMIT_ATTEMPTS, MESSAGE_XP_RATE_LIMIT_WINDOW_MS);
     if (!canProcess) return;
-
     const levelingConfig = await getLevelingConfig(client, message.guild.id);
     if (!levelingConfig?.enabled) return;
     if (levelingConfig.ignoredChannels?.includes(message.channel.id)) return;
@@ -328,11 +280,9 @@ async function handleLeveling(message, client) {
     }
     if (levelingConfig.blacklistedUsers?.includes(message.author.id)) return;
     if (!message.content || message.content.trim().length === 0) return;
-
     const userData = await getUserLevelData(client, message.guild.id, message.author.id);
     const cooldownTime = levelingConfig.xpCooldown || 60;
     if (Date.now() - (userData.lastMessage || 0) < cooldownTime * 1000) return;
-
     const minXP = levelingConfig.xpRange?.min || levelingConfig.xpPerMessage?.min || 15;
     const maxXP = levelingConfig.xpRange?.max || levelingConfig.xpPerMessage?.max || 25;
     const safeMinXP = Math.max(1, minXP);
