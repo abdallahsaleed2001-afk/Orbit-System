@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { successEmbed, warningEmbed } from '../../utils/embeds.js';
 import { logger } from '../../utils/logger.js';
-
+import { recordGameResult } from '../../services/games/gameStatsService.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const EMBED_DESCRIPTION_LIMIT = 4096;
@@ -77,6 +77,7 @@ export default {
       description
     );
 
+    await recordGameResult(interaction.guildId, 'fight', [winner.id], [loser.id]);
     await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
     logger.debug(`Fight command executed between ${challenger.id} and ${opponent.id} in guild ${interaction.guildId}`);
   },
