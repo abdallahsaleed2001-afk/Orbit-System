@@ -9,7 +9,7 @@ const lobbyRows = game => [new ActionRowBuilder().addComponents(
 
 async function runMines(interaction) {
   const result = createMines(interaction.guildId, interaction.channelId, interaction.user);
-  if (result.error === 'active') return interaction.reply({ content: 'توجد لعبة لغم نشطة بالفعل في هذه القناة.', ephemeral: true });
+  if (result.error === 'active') return interaction.reply({ content: 'توجد لعبة لغم نشطة بالفعل في هذه القناة.' });
   const game = result.game;
   const message = await interaction.reply({
     content: `**INFINITY GAMES — لغم**\n\nالتسجيل مفتوح لمدة **60 ثانية**.\nوقت الدخول: <t:${game.joinEndsAt}:R>\n\nاللاعبون (**1**):\n<@${interaction.user.id}>`,
@@ -33,9 +33,13 @@ async function runMines(interaction) {
 }
 
 export default {
+  data: { name: 'لغم', options: [] },
   name: 'لغم',
   category: 'Fun',
   prefixOnly: true,
+  async execute(interaction) {
+    return runMines(interaction);
+  },
   async prefixExecute(interaction) {
     return runMines(interaction);
   },
