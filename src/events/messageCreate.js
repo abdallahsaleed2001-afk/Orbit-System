@@ -228,17 +228,15 @@ async function handlePrefixCommand(message, client) {
     const guildConfig = await getGuildConfig(client, message.guild.id);
     const configuredPrefix = guildConfig?.prefix || getCommandPrefix();
 
-    // Game-system commands have one permanent prefix: `-`.
-    // This is intentionally independent of the server's normal command prefix.
     const gameParsed = parsePrefixCommand(message.content, '-');
     const normalParsed = parsePrefixCommand(message.content, configuredPrefix);
     const gameCommandName = gameParsed?.commandName?.trim();
+    const normalCommandName = normalParsed?.commandName?.trim();
     const isGameSystemMessage = Boolean(gameParsed && GAME_SYSTEM_COMMANDS.has(gameCommandName));
 
-    if (isGameSystemMessage) {
-      // Only the dedicated `-` form is accepted for game-system commands.
-      if (!String(message.content).startsWith('-')) return;
-    }
+    // Game-system commands are accepted only with the permanent `-` prefix.
+    // This also prevents an old/custom prefix such as `!` from exposing them.
+    if (!isGameSystemMessage && normalParsed && GAME_SYSTEM_COMMANDS.has(normalCommandName)) return;
 
     const parsed = isGameSystemMessage ? gameParsed : normalParsed;
     if (!parsed) return;
