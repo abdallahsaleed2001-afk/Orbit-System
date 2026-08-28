@@ -1,7 +1,7 @@
 const games = new Map();
 
 export const MINES_JOIN_MS = 60_000;
-export const MINES_TURN_MS = 30_000;
+export const MINES_TURN_MS = 10_000;
 const keyOf = (guildId, channelId) => `${guildId}:${channelId}`;
 
 function newRound(game) {
