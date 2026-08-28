@@ -28,6 +28,7 @@ const MESSAGE_XP_RATE_LIMIT_ATTEMPTS = 12;
 const MESSAGE_XP_RATE_LIMIT_WINDOW_MS = 10000;
 const STAFF_CACHE_TTL_MS = 60 * 1000;
 const staffCache = new Map();
+const GAME_SYSTEM_COMMANDS = new Set(['العاب', 'احصائياتي', 'ايقاف']);
 
 export default {
   name: Events.MessageCreate,
@@ -40,8 +41,6 @@ export default {
         return;
       }
 
-      // Games are handled here instead of a second MessageCreate listener.
-      // This guarantees game answers are processed by the same message pipeline.
       const gameHandled = await handleGameMessage(message, client);
       if (gameHandled) return;
 
@@ -227,11 +226,25 @@ async function handleTicketClosedLog(message) {
 async function handlePrefixCommand(message, client) {
   try {
     const guildConfig = await getGuildConfig(client, message.guild.id);
-    const prefix = guildConfig?.prefix || getCommandPrefix();
-    const parsed = parsePrefixCommand(message.content, prefix);
+    const configuredPrefix = guildConfig?.prefix || getCommandPrefix();
+
+    // Game-system commands have one permanent prefix: `-`.
+    // This is intentionally independent of the server's normal command prefix.
+    const gameParsed = parsePrefixCommand(message.content, '-');
+    const normalParsed = parsePrefixCommand(message.content, configuredPrefix);
+    const gameCommandName = gameParsed?.commandName?.trim();
+    const isGameSystemMessage = Boolean(gameParsed && GAME_SYSTEM_COMMANDS.has(gameCommandName));
+
+    if (isGameSystemMessage) {
+      // Only the dedicated `-` form is accepted for game-system commands.
+      if (!String(message.content).startsWith('-')) return;
+    }
+
+    const parsed = isGameSystemMessage ? gameParsed : normalParsed;
     if (!parsed) return;
 
     let { commandName, args } = parsed;
+    const prefix = isGameSystemMessage ? '-' : configuredPrefix;
     const musicPrefixShortcut = commandName.toLowerCase();
     const MUSIC_PREFIX_SHORTCUTS = new Set(['leave', 'pause', 'resume', 'skip', 'stop', 'volume']);
     if (MUSIC_PREFIX_SHORTCUTS.has(musicPrefixShortcut)) {
