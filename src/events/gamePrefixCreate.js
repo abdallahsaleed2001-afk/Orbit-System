@@ -1,17 +1,9 @@
 import { Events } from 'discord.js';
-import { cancelGame, checkAnswer, getActiveGame, startGame } from '../services/games/gameService.js';
-import { createRoulette, getRoulette, cancelRoulette } from '../services/games/rouletteService.js';
-import { sendJoinMessage } from '../interactions/buttons/roulette/roulette.js';
-import { logger } from '../utils/logger.js';
+import { cancelGame, checkAnswer, getActiveGame } from '../services/games/gameService.js';
+import { cancelRoulette, getRoulette } from '../services/games/rouletteService.js';
 
 const GAME_TTL_MS = 20_000;
 const MEMORY_HIDE_MS = 2_000;
-const GAME_PREFIX_TYPES = new Map([
-  ['فكك', 'fakk'], ['اشبك', 'ashbak'], ['اسرع', 'asra'], ['اسم', 'ism'],
-  ['حساب', 'hisab'], ['رتب', 'ratib'], ['ذاكرة', 'thakira'], ['مختلف', 'mokhtalef'],
-  ['عكس', 'aks'], ['حرف', 'harf'],
-]);
-const GAME_LIST = ['-فكك', '-اشبك', '-اسرع', '-اسم', '-حساب', '-رتب', '-ذاكرة', '-مختلف', '-عكس', '-حرف', '-روليت'];
 
 function getTimeoutAnswer(game) {
   if (game?.type === 'fakk' && game?.display) return [...String(game.display)].join(' ');
@@ -28,7 +20,7 @@ function getTimeoutAnswer(game) {
 function sendTimeout(channel, guildId, channelId, game) {
   const answer = getTimeoutAnswer(game);
   cancelGame(guildId, channelId);
-  const answerText = answer ? `\n**الاجابة الصحيحة: ${answer}**` : '';
+  const answerText = answer ? `\n**الإجابة الصحيحة: ${answer}**` : '';
   channel.send(`⏱️ **انتهت الجولة!** لم يجب أحد في الوقت المحدد.${answerText}`).catch(() => {});
 }
 
@@ -41,7 +33,9 @@ function scheduleTimeout(message, game) {
   }, GAME_TTL_MS);
 }
 
-function winMessage(message) { return `🏆 **${message.author} فاز!**`; }
+function winMessage(message) {
+  return `🏆 **${message.author} فاز!**`;
+}
 
 export default {
   name: Events.MessageCreate,
@@ -49,81 +43,61 @@ export default {
     try {
       if (!message.guild || message.author.bot) return;
       const content = String(message.content ?? '').trim();
-      const command = content.startsWith('-') ? content.slice(1).trim().split(/\s+/)[0]?.toLowerCase() : '';
+      const command = content.startsWith('-')
+        ? content.slice(1).trim().split(/\s+/)[0]?.toLowerCase()
+        : '';
       const roulette = getRoulette(message.guild.id, message.channel.id);
 
-      if (roulette && command === 'ايقاف') {
-        cancelRoulette(message.guild.id, message.channel.id);
-        await message.channel.send('🛑 **تم إيقاف الروليت.**').catch(() => {});
-        return;
-      }
-
-      if (command === 'روليت') {
-        if (roulette) {
-          await message.channel.send('⚠️ توجد جولة روليت نشطة بالفعل في هذه القناة.').catch(() => {});
-          return;
-        }
-        if (getActiveGame(message.guild.id, message.channel.id)) {
-          await message.channel.send('⚠️ توجد لعبة نشطة بالفعل في هذه القناة.').catch(() => {});
-          return;
-        }
-        const created = createRoulette(message.guild.id, message.channel.id, message.author);
-        if (created.error) return;
-        await sendJoinMessage(message, created.game);
-        return;
-      }
-
-      const active = getActiveGame(message.guild.id, message.channel.id);
-      if (active && command === 'ايقاف') {
-        cancelGame(message.guild.id, message.channel.id);
-        await message.channel.send('🛑 **تم إيقاف الجولة.**').catch(() => {});
-        return;
-      }
-      if (active && !command && checkAnswer(active, content)) {
-        cancelGame(message.guild.id, message.channel.id);
-        await message.channel.send(winMessage(message)).catch(() => {});
-        return;
-      }
-      if (active && GAME_PREFIX_TYPES.has(command)) return;
-
-      if (!content.startsWith('-')) return;
-      if (command === 'العاب') {
-        await message.channel.send(`🎮 **الألعاب المتاحة**\n\n${GAME_LIST.map((name) => `**${name}**`).join('\n')}\n\n🛑 **-ايقاف**`).catch(() => {});
-        return;
-      }
+      // Keep -ايقاف available for every active game without exposing
+      // individual game launch commands.
       if (command === 'ايقاف') {
+        if (roulette) {
+          cancelRoulette(message.guild.id, message.channel.id);
+          await message.channel.send('🛑 **تم إيقاف الروليت.**').catch(() => {});
+          return;
+        }
+
+        const active = getActiveGame(message.guild.id, message.channel.id);
+        if (active) {
+          cancelGame(message.guild.id, message.channel.id);
+          await message.channel.send('🛑 **تم إيقاف الجولة.**').catch(() => {});
+          return;
+        }
+
         await message.channel.send('ℹ️ لا توجد جولة نشطة في هذه القناة.').catch(() => {});
         return;
       }
 
-      const type = GAME_PREFIX_TYPES.get(command);
-      if (!type) return;
-      const game = startGame(message.guild.id, message.channel.id, type);
-      if (game?.error === 'active') {
-        await message.channel.send('⚠️ توجد جولة نشطة بالفعل في هذه القناة.').catch(() => {});
+      const active = getActiveGame(message.guild.id, message.channel.id);
+      if (!active) return;
+
+      // Answers remain message-based exactly as before for the games that use them.
+      if (!command && checkAnswer(active, content)) {
+        cancelGame(message.guild.id, message.channel.id);
+        await message.channel.send(winMessage(message)).catch(() => {});
         return;
       }
-      if (!game?.prompt) return;
 
-      // Keep the bot's message reference so games that have multiple phases
-      // can update the same message instead of creating a duplicate message.
-      const gameMessage = await message.channel.send({ content: game.prompt });
-      scheduleTimeout(message, game);
+      // Starting games is now exclusively handled by the unified -العاب menu.
+      scheduleTimeout(message, active);
 
-      if (type === 'thakira') {
+      if (active.type === 'thakira') {
         setTimeout(async () => {
-          if (getActiveGame(message.guild.id, message.channel.id) !== game) return;
+          if (getActiveGame(message.guild.id, message.channel.id) !== active) return;
           try {
-            await gameMessage.edit({
-              content: '🧠 **انتهى وقت الحفظ — اكتب الرقم الذي رأيته!**',
-            });
-          } catch (error) {
-            logger.warn?.('Failed to update memory game message:', error);
+            const gameMessage = message.channel.messages.cache.last();
+            if (gameMessage) {
+              await gameMessage.edit({
+                content: '🧠 **انتهى وقت الحفظ — اكتب الرقم الذي رأيته!**',
+              });
+            }
+          } catch {
+            // Ignore message update failures; gameplay state remains valid.
           }
         }, MEMORY_HIDE_MS);
       }
-    } catch (error) {
-      logger.error('Error handling game prefix message:', error);
+    } catch {
+      // Keep message handling isolated from the rest of the bot.
     }
   },
 };
