@@ -2,13 +2,20 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { createMines, MINES_JOIN_MS, startMines, endMines } from '../../services/games/minesService.js';
 import { grid, startMinesTurnTimer } from '../../interactions/buttons/mines/mines.js';
 
+const getGuildId = interaction => interaction.guildId || interaction.guild?.id;
+const getChannelId = interaction => interaction.channelId || interaction.channel?.id;
+
 const lobbyRows = game => [new ActionRowBuilder().addComponents(
   new ButtonBuilder().setCustomId(`mines_join:${game.guildId}:${game.channelId}`).setLabel('انضم').setStyle(ButtonStyle.Success),
   new ButtonBuilder().setCustomId(`mines_leave:${game.guildId}:${game.channelId}`).setLabel('خروج').setStyle(ButtonStyle.Secondary),
 )];
 
 async function runMines(interaction) {
-  const result = createMines(interaction.guildId, interaction.channelId, interaction.user);
+  const guildId = getGuildId(interaction);
+  const channelId = getChannelId(interaction);
+  if (!guildId || !channelId) return interaction.reply({ content: 'لا يمكن تشغيل اللعبة هنا.' });
+
+  const result = createMines(guildId, channelId, interaction.user);
   if (result.error === 'active') return interaction.reply({ content: 'توجد لعبة لغم نشطة بالفعل في هذه القناة.' });
   const game = result.game;
   const message = await interaction.reply({
@@ -37,10 +44,6 @@ export default {
   name: 'لغم',
   category: 'Fun',
   prefixOnly: true,
-  async execute(interaction) {
-    return runMines(interaction);
-  },
-  async prefixExecute(interaction) {
-    return runMines(interaction);
-  },
+  async execute(interaction) { return runMines(interaction); },
+  async prefixExecute(interaction) { return runMines(interaction); },
 };
