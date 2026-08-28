@@ -14,6 +14,7 @@ export const GAME_NAMES = {
     harf: 'حرف',
     mokhtalef: 'مختلف',
     thakira: 'ذاكرة',
+    fight: 'قتال',
 };
 
 const GAME_KEYS = Object.keys(GAME_NAMES);
