@@ -7,6 +7,7 @@ import botConfig from '../../config/bot.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const GAMES_ROLE_ID = '1543013490313400340';
 
 function getSubcommandInfo(commandData) {
     const subcommands = [];
@@ -35,6 +36,34 @@ async function getAllFiles(directory, fileList = []) {
     return fileList;
 }
 
+function applyGameRoleGuard(command) {
+    if (command.category !== 'Fun' || command._gamesRoleGuardApplied) return command;
+
+    const guard = async (interaction) => {
+        const hasRole = interaction?.member?.roles?.cache?.has(GAMES_ROLE_ID) || interaction?.member?.roles?.includes?.(GAMES_ROLE_ID);
+        if (hasRole) return true;
+        await interaction?.reply?.({ content: 'ليس لديك صلاحية استخدام ألعاب البوت.', flags: 64 }).catch(() => {});
+        return false;
+    };
+
+    const originalExecute = command.execute;
+    command.execute = async function (...args) {
+        if (!(await guard(args[0]))) return;
+        return originalExecute.apply(this, args);
+    };
+
+    if (typeof command.prefixExecute === 'function') {
+        const originalPrefixExecute = command.prefixExecute;
+        command.prefixExecute = async function (...args) {
+            if (!(await guard(args[0]))) return;
+            return originalPrefixExecute.apply(this, args);
+        };
+    }
+
+    command._gamesRoleGuardApplied = true;
+    return command;
+}
+
 export async function loadCommands(client) {
     client.commands = new Collection();
     const commandsPath = path.join(__dirname, '../../commands');
@@ -53,6 +82,7 @@ export async function loadCommands(client) {
             const category = path.basename(path.dirname(filePath));
             command.category = category;
             command.filePath = filePath.replace(/\\/g, '/');
+            applyGameRoleGuard(command);
             if (!uniqueCommandNames.has(commandName)) {
                 uniqueCommandNames.add(commandName);
                 client.commands.set(commandName, command);
