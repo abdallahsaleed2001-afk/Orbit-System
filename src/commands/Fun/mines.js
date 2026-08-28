@@ -19,7 +19,7 @@ async function runMines(interaction) {
   if (result.error === 'active') return interaction.reply({ content: 'توجد لعبة لغم نشطة بالفعل في هذه القناة.' });
   const game = result.game;
   const message = await interaction.reply({
-    content: `**INFINITY GAMES — لغم**\n\nالتسجيل مفتوح لمدة **60 ثانية**.\nوقت الدخول: <t:${game.joinEndsAt}:R>\n\nاللاعبون (**1**):\n<@${interaction.user.id}>`,
+    content: `**INFINITY GAMES — لغم**\n\nالتسجيل مفتوح لمدة **20 ثانية**.\nوقت الدخول: <t:${game.joinEndsAt}:R>\n\nاللاعبون (**1**):\n<@${interaction.user.id}>`,
     components: lobbyRows(game),
     fetchReply: true,
   });
