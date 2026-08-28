@@ -12,9 +12,5 @@ export const GUILD_CONFIG_DEFAULTS = {
     dmOnClose: true,
     disabledCommands: {},
     disabledCategories: {},
-    autoReaction: {
-        enabled: false,
-        channelId: null,
-        reaction: null,
-    },
+    autoReaction: [],
 };
