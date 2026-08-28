@@ -57,16 +57,14 @@ export function startMinesTurnTimer(channel, game) {
 }
 
 async function executeMinesButton(interaction, client, args = []) {
-  const [guildIdFromArgs, channelIdFromArgs, cellFromArgs] = Array.isArray(args) ? args : [];
   const parts = interaction.customId.split(':');
   const action = parts[0];
-  const guildId = guildIdFromArgs || parts[1];
-  const channelId = channelIdFromArgs || parts[2];
-  const cell = cellFromArgs !== undefined ? Number(cellFromArgs) : (parts[3] === undefined ? null : Number(parts[3]));
+  const guildId = interaction.guildId;
+  const channelId = interaction.channelId;
+  const cell = parts[3] === undefined ? null : Number(parts[3]);
 
   const game = getMines(guildId, channelId);
   if (!game || !game.active) return interaction.reply({ content: 'هذه اللعبة انتهت.', ephemeral: true });
-  if (interaction.guildId !== guildId || interaction.channelId !== channelId) return interaction.reply({ content: 'هذه اللعبة ليست في هذه القناة.', ephemeral: true });
 
   if (action === 'mines_join') {
     if (game.phase !== 'join') return interaction.reply({ content: 'انتهى وقت الدخول.', ephemeral: true });
