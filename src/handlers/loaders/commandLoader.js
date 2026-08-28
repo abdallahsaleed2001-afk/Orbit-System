@@ -8,6 +8,7 @@ import botConfig from '../../config/bot.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const GAMES_ROLE_ID = '1543013490313400340';
+const NON_PLAYABLE_FUN_COMMANDS = new Set(['count', 'احصائياتي', 'ايقاف', 'العاب']);
 
 function getSubcommandInfo(commandData) {
     const subcommands = [];
@@ -66,6 +67,7 @@ function applyGameRoleGuard(command) {
 
 export async function loadCommands(client) {
     client.commands = new Collection();
+    client.gameCommands = new Collection();
     const commandsPath = path.join(__dirname, '../../commands');
     const commandFiles = await getAllFiles(commandsPath);
     const uniqueCommandNames = new Set();
@@ -82,7 +84,22 @@ export async function loadCommands(client) {
             const category = path.basename(path.dirname(filePath));
             command.category = category;
             command.filePath = filePath.replace(/\\/g, '/');
+
+            // Fun commands are gameplay commands by default, except the game-management commands.
+            // They stay loaded as command modules so the existing gameplay code is reused unchanged,
+            // but they are no longer registered as standalone slash/prefix commands.
+            const isGameCommand = category === 'Fun' && !NON_PLAYABLE_FUN_COMMANDS.has(commandName);
+            if (isGameCommand) command.gameCommand = true;
+
             applyGameRoleGuard(command);
+
+            if (isGameCommand) {
+                if (!client.gameCommands.has(commandName)) {
+                    client.gameCommands.set(commandName, command);
+                }
+                continue;
+            }
+
             if (!uniqueCommandNames.has(commandName)) {
                 uniqueCommandNames.add(commandName);
                 client.commands.set(commandName, command);
@@ -92,10 +109,9 @@ export async function loadCommands(client) {
         }
     }
 
-    // Keep prefix-only commands available to the bot, but never register them as Discord slash commands.
     const slashCount = [...client.commands.values()].filter(command => !command.prefixOnly && !command.slashOnly === false).length;
     const prefixOnlyCount = [...client.commands.values()].filter(command => command.prefixOnly === true).length;
-    logger.info(`Loaded ${client.commands.size} commands (${slashCount} slash candidates, ${prefixOnlyCount} prefix-only)`);
+    logger.info(`Loaded ${client.commands.size} commands (${slashCount} slash candidates, ${prefixOnlyCount} prefix-only, ${client.gameCommands.size} games)`);
     return client.commands;
 }
 
