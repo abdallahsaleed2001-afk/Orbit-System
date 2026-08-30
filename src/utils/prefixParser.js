@@ -4,11 +4,16 @@ import { resolveSubcommandAlias } from '../config/commands/commandAliases.js';
 import { logger } from './logger.js';
 
 export function parsePrefixCommand(content, prefix) {
-  if (!content || !content.startsWith(prefix)) {
+  if (!content) {
     return null;
   }
 
-  const withoutPrefix = content.slice(prefix.length).trim();
+  const isGameStopShortcut = prefix !== '-' && /^-\s*توقف(?:\s|$)/i.test(content);
+  if (!content.startsWith(prefix) && !isGameStopShortcut) {
+    return null;
+  }
+
+  const withoutPrefix = isGameStopShortcut ? content.slice(1).trim() : content.slice(prefix.length).trim();
   
   if (!withoutPrefix) {
     return null;
