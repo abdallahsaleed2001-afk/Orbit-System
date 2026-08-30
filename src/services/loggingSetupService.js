@@ -74,13 +74,21 @@ export async function setupLoggingSystem(client, guildId) {
   const result = await ensureLoggingChannels(guild);
   const config = await getGuildConfig(client, guildId);
   const currentLogging = config.logging || {};
+  const currentChannels = currentLogging.channels || {};
 
   await updateGuildConfig(client, guildId, {
     logging: {
       ...currentLogging,
       enabled: true,
       categoryId: result.categoryId,
-      channels: { ...(currentLogging.channels || {}), ...result.channels },
+      channels: {
+        ...currentChannels,
+        ...result.channels,
+        // Backwards compatibility: the existing logger uses `audit` for general audit events.
+        audit: result.channels.moderation,
+        applications: result.channels.application,
+        reports: result.channels.report,
+      },
     },
   });
 
