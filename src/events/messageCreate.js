@@ -23,7 +23,7 @@ const MESSAGE_XP_RATE_LIMIT_ATTEMPTS = 12;
 const MESSAGE_XP_RATE_LIMIT_WINDOW_MS = 10000;
 const STAFF_CACHE_TTL_MS = 60 * 1000;
 const staffCache = new Map();
-const GAME_SYSTEM_COMMANDS = new Set(['العاب', 'احصائياتي', 'ايقاف']);
+const GAME_SYSTEM_COMMANDS = new Set(['العاب', 'احصائياتي', 'ايقاف', 'كت']);
 
 export default {
   name: Events.MessageCreate,
@@ -84,23 +84,12 @@ async function handleAutoReaction(message, client) {
         ? [{ slot: 1, enabled: true, channelId: rawRooms.channelId, reaction: rawRooms.reaction }]
         : []);
 
-    const room = rooms.find((item) =>
-      item?.enabled === true &&
-      item?.channelId &&
-      item?.reaction &&
-      item.channelId === message.channel.id
-    );
+    const room = rooms.find((item) => item?.enabled === true && item?.channelId && item?.reaction && item.channelId === message.channel.id);
     if (!room) return false;
-
     await message.react(String(room.reaction));
     return true;
   } catch (error) {
-    logger.error('Error handling auto reaction:', {
-      error: error.message,
-      guildId: message.guild?.id,
-      channelId: message.channel?.id,
-      messageId: message.id,
-    });
+    logger.error('Error handling auto reaction:', { error: error.message, guildId: message.guild?.id, channelId: message.channel?.id, messageId: message.id });
     return false;
   }
 }
@@ -112,8 +101,8 @@ async function handleColorSelection(message, client) {
     if (!number || number < 1 || number > 100) return false;
     const color = await getColorByNumber(client, message.guild.id, number);
     if (!color) return false;
-    if (message.channel.id !== (await client.db.get(`colors:${message.guild.id}`, null))?.channelId) return false;
     const config = await client.db.get(`colors:${message.guild.id}`, null);
+    if (message.channel.id !== config?.channelId) return false;
     const roleId = config?.roleIds?.[number - 1];
     if (!roleId) return false;
     const member = message.member || await message.guild.members.fetch(message.author.id);
@@ -155,34 +144,18 @@ async function handleTicketClosedLog(message) {
     const embed = message.embeds.find((item) => item.title?.trim() === 'تم إغلاق تذكرة');
     if (!embed) return;
     const fields = Array.isArray(embed.fields) ? embed.fields : [];
-    const getField = (...names) => {
-      const field = fields.find((item) => names.includes(String(item.name || '').trim()));
-      return field?.value?.trim() || null;
-    };
+    const getField = (...names) => fields.find((item) => names.includes(String(item.name || '').trim()))?.value?.trim() || null;
     const channelName = getField('اسم القناة');
     const claimedBy = getField('مستلم التذكرة');
     const closedBy = getField('تم الإغلاق بواسطة');
-    if (!channelName || !claimedBy) return;
-    if (/لم\s*يتم\s*استلامها/i.test(claimedBy)) return;
+    if (!channelName || !claimedBy || /لم\s*يتم\s*استلامها/i.test(claimedBy)) return;
     const mentionMatch = claimedBy.match(/<@!?([0-9]{15,25})>/);
     const idMatch = claimedBy.match(/\b([0-9]{15,25})\b/);
     const staffId = mentionMatch?.[1] || idMatch?.[1];
-    if (!staffId) {
-      logger.warn(`Ticket log found but claimed staff ID could not be parsed: ${claimedBy}`, { guildId: message.guild.id, messageId: message.id });
-      return;
-    }
+    if (!staffId) return;
     const ticketType = channelName.split('-')[0] || null;
-    const result = await recordTicketLog(message.guild.id, {
-      messageId: message.id,
-      staffId,
-      ticketId: channelName,
-      ticketType,
-      closedBy,
-      closedAt: embed.timestamp || message.createdAt?.toISOString() || null,
-    });
-    if (result.recorded) {
-      logger.info(`Ticket handled recorded for staff ${staffId}: ${channelName}`, { event: 'staff.ticket_handled', guildId: message.guild.id, staffId, ticketId: channelName, sourceMessageId: message.id });
-    }
+    const result = await recordTicketLog(message.guild.id, { messageId: message.id, staffId, ticketId: channelName, ticketType, closedBy, closedAt: embed.timestamp || message.createdAt?.toISOString() || null });
+    if (result.recorded) logger.info(`Ticket handled recorded for staff ${staffId}: ${channelName}`);
   } catch (error) {
     logger.error('Error processing ticket closed log:', error);
   }
@@ -204,44 +177,20 @@ async function handlePrefixCommand(message, client) {
     const prefix = isGameSystemMessage ? '-' : configuredPrefix;
     const musicPrefixShortcut = commandName.toLowerCase();
     const MUSIC_PREFIX_SHORTCUTS = new Set(['leave', 'pause', 'resume', 'skip', 'stop', 'volume']);
-    if (MUSIC_PREFIX_SHORTCUTS.has(musicPrefixShortcut)) {
-      commandName = 'music';
-      args = [musicPrefixShortcut, ...args];
-    }
+    if (MUSIC_PREFIX_SHORTCUTS.has(musicPrefixShortcut)) { commandName = 'music'; args = [musicPrefixShortcut, ...args]; }
     logger.info(`Prefix command detected: ${commandName}, args: ${args.join(', ')}`);
     const resolvedCommandName = resolveCommandAlias(commandName);
-    logger.info(`Resolved command name: ${resolvedCommandName}`);
     const command = client.commands.get(resolvedCommandName);
     if (!command) return;
-    if (isMaintenanceMode() && !isBotOwner(message.author.id)) {
-      await message.channel.send({ embeds: [createEmbed({ title: 'Maintenance Mode', description: getBotMessage('maintenanceMode'), color: 'warning' })] }).catch(() => {});
-      return;
-    }
-    if (!isCommandCategoryEnabled(command.category)) {
-      await message.channel.send({ embeds: [createEmbed({ title: 'Feature Disabled', description: getBotMessage('commandDisabled'), color: 'error' })] }).catch(() => {});
-      return;
-    }
+    if (isMaintenanceMode() && !isBotOwner(message.author.id)) { await message.channel.send({ embeds: [createEmbed({ title: 'Maintenance Mode', description: getBotMessage('maintenanceMode'), color: 'warning' })] }).catch(() => {}); return; }
+    if (!isCommandCategoryEnabled(command.category)) { await message.channel.send({ embeds: [createEmbed({ title: 'Feature Disabled', description: getBotMessage('commandDisabled'), color: 'error' })] }).catch(() => {}); return; }
     const restriction = getPrefixRestriction(command, args, resolveSubcommandAlias);
-    if (!supportsPrefixExecution(command) || restriction.blocked) {
-      if (restriction.blocked && restriction.reason) await message.channel.send({ embeds: [createEmbed({ title: 'Slash Command Only', description: `${restriction.reason}\nUse \`/${resolvedCommandName}\` instead.`, color: 'info' })] }).catch(() => {});
-      return;
-    }
-    if (!(await isCommandEnabled(client, message.guild.id, resolvePrefixAccessKey(command.data, args), command.category))) {
-      await message.channel.send({ embeds: [createEmbed({ title: 'Command Disabled', description: 'This command has been disabled for this server.', color: 'error' })] }).catch(() => {});
-      return;
-    }
-    const mockInteractionForProtection = { guildId: message.guild.id, user: message.author };
-    const abuseProtection = await enforceAbuseProtection(mockInteractionForProtection, command, resolvedCommandName);
-    if (!abuseProtection.allowed) {
-      const formattedCooldown = formatCooldownDuration(abuseProtection.remainingMs);
-      await message.channel.send({ embeds: [createEmbed({ title: 'Command Cooldown', description: `This command is on cooldown. Please wait ${formattedCooldown} before trying again.`, color: 'error' })] }).catch(() => {});
-      return;
-    }
-    logger.info(`Executing prefix command: ${prefix}${commandName} (resolved to ${resolvedCommandName}) by ${message.author.tag}`);
+    if (!supportsPrefixExecution(command) || restriction.blocked) { if (restriction.blocked && restriction.reason) await message.channel.send({ embeds: [createEmbed({ title: 'Slash Command Only', description: `${restriction.reason}\nUse \`/${resolvedCommandName}\` instead.`, color: 'info' })] }).catch(() => {}); return; }
+    if (!(await isCommandEnabled(client, message.guild.id, resolvePrefixAccessKey(command.data, args), command.category))) { await message.channel.send({ embeds: [createEmbed({ title: 'Command Disabled', description: 'This command has been disabled for this server.', color: 'error' })] }).catch(() => {}); return; }
+    const abuseProtection = await enforceAbuseProtection({ guildId: message.guild.id, user: message.author }, command, resolvedCommandName);
+    if (!abuseProtection.allowed) { const formattedCooldown = formatCooldownDuration(abuseProtection.remainingMs); await message.channel.send({ embeds: [createEmbed({ title: 'Command Cooldown', description: `This command is on cooldown. Please wait ${formattedCooldown} before trying again.`, color: 'error' })] }).catch(() => {}); return; }
     await executePrefixCommand(command, message, args, client, prefix, guildConfig);
-  } catch (error) {
-    logger.error('Error handling prefix command:', error);
-  }
+  } catch (error) { logger.error('Error handling prefix command:', error); }
 }
 
 async function handleCountingGame(message, client) {
@@ -251,19 +200,10 @@ async function handleCountingGame(message, client) {
     const content = message.content.trim();
     const validCount = isValidCountingMessage(content, config);
     const invalidAttempt = !validCount || message.author.id === config.lastUserId;
-    if (invalidAttempt) {
-      await message.delete().catch(() => {});
-      await saveCountingGameConfig(client, message.guild.id, { ...config, nextNumber: 1, lastUserId: null, currentStreak: 0 });
-      const failureMessage = await message.channel.send(`❌ Count broken by <@${message.author.id}>. The sequence has been reset to **1**.`);
-      setTimeout(() => failureMessage.delete().catch(() => {}), 10000);
-      return true;
-    }
+    if (invalidAttempt) { await message.delete().catch(() => {}); await saveCountingGameConfig(client, message.guild.id, { ...config, nextNumber: 1, lastUserId: null, currentStreak: 0 }); const failureMessage = await message.channel.send(`❌ Count broken by <@${message.author.id}>. The sequence has been reset to **1**.`); setTimeout(() => failureMessage.delete().catch(() => {}), 10000); return true; }
     await recordCorrectCount(client, message.guild.id, message.author.id);
     return true;
-  } catch (error) {
-    logger.error('Error handling counting game:', error);
-    return false;
-  }
+  } catch (error) { logger.error('Error handling counting game:', error); return false; }
 }
 
 async function handleLeveling(message, client) {
@@ -272,26 +212,17 @@ async function handleLeveling(message, client) {
     const canProcess = await checkRateLimit(rateLimitKey, MESSAGE_XP_RATE_LIMIT_ATTEMPTS, MESSAGE_XP_RATE_LIMIT_WINDOW_MS);
     if (!canProcess) return;
     const levelingConfig = await getLevelingConfig(client, message.guild.id);
-    if (!levelingConfig?.enabled) return;
-    if (levelingConfig.ignoredChannels?.includes(message.channel.id)) return;
-    if (levelingConfig.ignoredRoles?.length > 0) {
-      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
-      if (member && member.roles.cache.some(role => levelingConfig.ignoredRoles.includes(role.id))) return;
-    }
-    if (levelingConfig.blacklistedUsers?.includes(message.author.id)) return;
-    if (!message.content || message.content.trim().length === 0) return;
+    if (!levelingConfig?.enabled || levelingConfig.ignoredChannels?.includes(message.channel.id)) return;
+    if (levelingConfig.ignoredRoles?.length > 0) { const member = await message.guild.members.fetch(message.author.id).catch(() => null); if (member && member.roles.cache.some(role => levelingConfig.ignoredRoles.includes(role.id))) return; }
+    if (levelingConfig.blacklistedUsers?.includes(message.author.id) || !message.content?.trim()) return;
     const userData = await getUserLevelData(client, message.guild.id, message.author.id);
     const cooldownTime = levelingConfig.xpCooldown || 60;
     if (Date.now() - (userData.lastMessage || 0) < cooldownTime * 1000) return;
-    const minXP = levelingConfig.xpRange?.min || levelingConfig.xpPerMessage?.min || 15;
-    const maxXP = levelingConfig.xpRange?.max || levelingConfig.xpPerMessage?.max || 25;
-    const safeMinXP = Math.max(1, minXP);
-    const safeMaxXP = Math.max(safeMinXP, maxXP);
-    const xpToGive = Math.floor(Math.random() * (safeMaxXP - safeMinXP + 1)) + safeMinXP;
+    const minXP = Math.max(1, levelingConfig.xpRange?.min || levelingConfig.xpPerMessage?.min || 15);
+    const maxXP = Math.max(minXP, levelingConfig.xpRange?.max || levelingConfig.xpPerMessage?.max || 25);
+    const xpToGive = Math.floor(Math.random() * (maxXP - minXP + 1)) + minXP;
     const finalXP = levelingConfig.xpMultiplier && levelingConfig.xpMultiplier > 1 ? Math.floor(xpToGive * levelingConfig.xpMultiplier) : xpToGive;
     const result = await addXp(client, message.guild, message.member, finalXP);
     if (result?.leveledUp) logger.info(`${message.author.tag} leveled up to level ${result.level} in ${message.guild.name}`);
-  } catch (error) {
-    logger.error('Error handling leveling for message:', error);
-  }
+  } catch (error) { logger.error('Error handling leveling for message:', error); }
 }
