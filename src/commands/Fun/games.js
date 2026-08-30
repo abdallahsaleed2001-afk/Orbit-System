@@ -1,8 +1,15 @@
 import { ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
 import { createEmbed } from '../../utils/embeds.js';
+import { getActiveGame } from '../../services/games/gameService.js';
+import { getMines } from '../../services/games/minesService.js';
+import { getXO } from '../../services/games/xoService.js';
+import { getRoulette } from '../../services/games/rouletteService.js';
 
 const GAMES_ROLE_ID = '1543013490313400340';
 const HIDDEN_GAMES = new Set(['roll', 'fight', 'flip']);
+const trackedChannels = new Map();
+const disabledAutoMenuChannels = new Set();
+let autoMenuIntervalStarted = false;
 
 const GAME_INFO = {
   fakk: { label: 'فكك', description: 'فكك الكلمة المطلوبة بأسرع ما يمكنك.' },
@@ -46,6 +53,80 @@ function getGameChoices(client) {
   });
 }
 
+function hasActiveGame(guildId, channelId) {
+  return Boolean(
+    getActiveGame(guildId, channelId)
+    || getMines(guildId, channelId)
+    || getXO(guildId, channelId)
+    || getRoulette(guildId, channelId)
+  );
+}
+
+function trackChannel(interaction) {
+  const guildId = interaction.guildId;
+  const channelId = interaction.channelId || interaction.channel?.id;
+  if (!guildId || !channelId) return;
+  const key = `${guildId}:${channelId}`;
+  trackedChannels.set(key, { guildId, channelId, wasActive: hasActiveGame(guildId, channelId) });
+}
+
+async function sendGamesMenu(client, guildId, channelId) {
+  const channel = client.channels.cache.get(channelId);
+  if (!channel?.isTextBased?.()) return;
+
+  const choices = getGameChoices(client);
+  if (!choices.length) return;
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('games_menu')
+    .setPlaceholder('اختر لعبة')
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(choices);
+
+  const embed = createEmbed({
+    title: '🎮 INFINITY GAMES',
+    description: 'اختر اللعبة التي تريد لعبها من القائمة بالأسفل.',
+    color: 'primary',
+  });
+
+  await channel.send({
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(menu)],
+  }).catch(() => {});
+}
+
+function startAutoMenu(client) {
+  if (autoMenuIntervalStarted) return;
+  autoMenuIntervalStarted = true;
+
+  setInterval(async () => {
+    for (const [key, state] of trackedChannels) {
+      const active = hasActiveGame(state.guildId, state.channelId);
+
+      if (state.wasActive && !active) {
+        state.wasActive = false;
+        if (!disabledAutoMenuChannels.has(key)) {
+          await sendGamesMenu(client, state.guildId, state.channelId);
+        }
+        continue;
+      }
+
+      state.wasActive = active;
+    }
+  }, 500);
+}
+
+export function disableAutoGameMenu(guildId, channelId) {
+  if (!guildId || !channelId) return;
+  disabledAutoMenuChannels.add(`${guildId}:${channelId}`);
+}
+
+export function enableAutoGameMenu(guildId, channelId) {
+  if (!guildId || !channelId) return;
+  disabledAutoMenuChannels.delete(`${guildId}:${channelId}`);
+}
+
 async function showGames(interaction) {
   if (!hasGamesRole(interaction)) {
     return interaction.reply({ content: 'ليس لديك صلاحية استخدام ألعاب البوت.', ephemeral: true });
@@ -55,6 +136,10 @@ async function showGames(interaction) {
   if (!choices.length) {
     return interaction.reply({ content: 'لا توجد ألعاب متاحة حاليًا.', ephemeral: true });
   }
+
+  enableAutoGameMenu(interaction.guildId, interaction.channelId || interaction.channel?.id);
+  trackChannel(interaction);
+  startAutoMenu(interaction.client);
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId('games_menu')
