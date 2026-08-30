@@ -2,6 +2,7 @@ import { getActiveGame, cancelGame } from '../../services/games/gameService.js';
 import { getMines, endMines } from '../../services/games/minesService.js';
 import { getXO, endXO } from '../../services/games/xoService.js';
 import { getRoulette, cancelRoulette } from '../../services/games/rouletteService.js';
+import { disableAutoGameMenu } from './games.js';
 
 const GAMES_ROLE_ID = '1543013490313400340';
 
@@ -24,8 +25,10 @@ async function runStop(interaction) {
     const roulette = getRoulette(guildId, channelId);
     const generic = getActiveGame(guildId, channelId);
 
+    disableAutoGameMenu(guildId, channelId);
+
     if (!mines && !xo && !roulette && !generic) {
-        return interaction.reply({ content: 'لا توجد لعبة نشطة في هذه القناة.', ephemeral: true });
+        return interaction.reply({ content: 'تم إيقاف إعادة إرسال قائمة الألعاب في هذه القناة.', ephemeral: true });
     }
 
     if (mines) endMines(mines);
@@ -33,7 +36,7 @@ async function runStop(interaction) {
     if (roulette) cancelRoulette(guildId, channelId);
     if (generic) cancelGame(guildId, channelId);
 
-    return interaction.reply({ content: '⛔ تم إيقاف اللعبة النشطة في هذه القناة.' });
+    return interaction.reply({ content: '⛔ تم إيقاف اللعبة وإيقاف إعادة إرسال قائمة الألعاب في هذه القناة.' });
 }
 
 export default {
