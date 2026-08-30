@@ -24,6 +24,7 @@ export const commandAliases = {
     'np': 'nowplaying', 'now': 'nowplaying',
 
     'فكك': 'fakk', 'اشبك': 'ashbak', 'اسرع': 'asra', 'اسم': 'ism', 'حساب': 'hisab', 'رتب': 'ratib', 'ذاكرة': 'thakira', 'مختلف': 'mokhtalef', 'عكس': 'aks', 'حرف': 'harf', 'روليت': 'roulette',
+    'توقف': 'ايقاف',
 };
 
 export const subcommandAliases = {
