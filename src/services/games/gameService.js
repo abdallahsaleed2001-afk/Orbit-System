@@ -106,8 +106,7 @@ export function startGame(guildId, channelId, type) {
       ['شتاء','خريف','ربيع','مفتاح'],
     ];
     const group = [...pick(groups)];
-    const oddIndex = Math.floor(Math.random() * group.length);
-    const [odd] = group.splice(oddIndex, 1);
+    const [odd] = group.splice(group.length - 1, 1);
     const shuffled = [...group, odd];
     for (let i = shuffled.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]; }
     game = { type, answer: normalize(odd), prompt: `🕵️ **مختلف!**\nأي كلمة مختلفة؟\n${shuffled.map((x,i)=>`${i+1}. ${x}`).join('  ')}` };
