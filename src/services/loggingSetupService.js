@@ -45,6 +45,10 @@ export async function ensureLoggingChannels(guild) {
 
   const channels = {};
   const created = [];
+  const overwrites = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.SendMessages] },
+    { id: me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
+  ];
 
   for (const [key, definition] of Object.entries(LOGGING_CHANNEL_DEFINITIONS)) {
     let channel = await findExistingChannel(guild, definition.name, category.id);
@@ -55,10 +59,13 @@ export async function ensureLoggingChannels(guild) {
         type: ChannelType.GuildText,
         parent: category.id,
         topic: definition.topic,
+        permissionOverwrites: overwrites,
       });
       created.push(channel.id);
-    } else if (!channel.topic) {
-      await channel.setTopic(definition.topic).catch(() => {});
+    } else {
+      if (!channel.topic) await channel.setTopic(definition.topic).catch(() => {});
+      await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false }).catch(() => {});
+      await channel.permissionOverwrites.edit(me, { ViewChannel: true, SendMessages: true, EmbedLinks: true, ReadMessageHistory: true }).catch(() => {});
     }
 
     channels[key] = channel.id;
@@ -84,7 +91,6 @@ export async function setupLoggingSystem(client, guildId) {
       channels: {
         ...currentChannels,
         ...result.channels,
-        // Backwards compatibility: the existing logger uses `audit` for general audit events.
         audit: result.channels.moderation,
         applications: result.channels.application,
         reports: result.channels.report,
