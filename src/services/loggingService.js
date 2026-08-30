@@ -11,7 +11,19 @@ import {
   splitComparisonFields,
 } from '../utils/logging/logEmbeds.js';
 
-const LOG_DESTINATIONS = ['audit', 'applications', 'reports'];
+const LOG_DESTINATIONS = [
+  'audit',
+  'moderation',
+  'message',
+  'member',
+  'role',
+  'leveling',
+  'reactionrole',
+  'giveaway',
+  'counter',
+  'applications',
+  'reports',
+];
 
 const EVENT_TYPES = {
   MODERATION_BAN: 'moderation.ban',
@@ -143,6 +155,14 @@ const EVENT_ICONS = {
 };
 
 const CATEGORY_DESTINATION = {
+  moderation: 'moderation',
+  leveling: 'leveling',
+  message: 'message',
+  role: 'role',
+  member: 'member',
+  reactionrole: 'reactionrole',
+  giveaway: 'giveaway',
+  counter: 'counter',
   application: 'applications',
   report: 'reports',
 };
@@ -355,7 +375,7 @@ export async function getLoggingStatus(client, guildId) {
 
   return {
     enabled: logging.enabled || false,
-    channels: logging.channels || { audit: null, applications: null, reports: null },
+    channels: logging.channels || {},
     channelId: logging.channels?.audit ?? null,
     ignore: getIgnoreList(config),
     enabledEvents: logging.enabledEvents || {},
