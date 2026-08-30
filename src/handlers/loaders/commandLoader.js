@@ -8,7 +8,7 @@ import botConfig from '../../config/bot.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const GAMES_ROLE_ID = '1543013490313400340';
-const NON_PLAYABLE_FUN_COMMANDS = new Set(['count', 'احصائياتي', 'ايقاف', 'العاب']);
+const NON_PLAYABLE_FUN_COMMANDS = new Set(['count', 'احصائياتي', 'ايقاف', 'العاب', 'كت']);
 
 function getSubcommandInfo(commandData) {
     const subcommands = [];
@@ -38,7 +38,7 @@ async function getAllFiles(directory, fileList = []) {
 }
 
 function applyGameRoleGuard(command) {
-    if (command.category !== 'Fun' || command._gamesRoleGuardApplied) return command;
+    if (command.category !== 'Fun' || command._gamesRoleGuardApplied || command.data?.name === 'كت') return command;
 
     const guard = async (interaction) => {
         const hasRole = interaction?.member?.roles?.cache?.has(GAMES_ROLE_ID) || interaction?.member?.roles?.includes?.(GAMES_ROLE_ID);
@@ -85,9 +85,8 @@ export async function loadCommands(client) {
             command.category = category;
             command.filePath = filePath.replace(/\\/g, '/');
 
-            // Fun commands are gameplay commands by default, except the game-management commands.
-            // They stay loaded as command modules so the existing gameplay code is reused unchanged,
-            // but they are no longer registered as standalone slash/prefix commands.
+            // Fun commands are gameplay commands by default, except the game-management commands and كت.
+            // كت remains a normal standalone command and is not added to client.gameCommands.
             const isGameCommand = category === 'Fun' && !NON_PLAYABLE_FUN_COMMANDS.has(commandName);
             if (isGameCommand) command.gameCommand = true;
 
