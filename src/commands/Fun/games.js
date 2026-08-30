@@ -2,6 +2,7 @@ import { ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
 import { createEmbed } from '../../utils/embeds.js';
 
 const GAMES_ROLE_ID = '1543013490313400340';
+const HIDDEN_GAMES = new Set(['roll', 'fight', 'flip']);
 
 const GAME_INFO = {
   fakk: { label: 'فكك', description: 'فكك الكلمة المطلوبة بأسرع ما يمكنك.' },
@@ -14,11 +15,9 @@ const GAME_INFO = {
   mokhtalef: { label: 'مختلف', description: 'اكتشف العنصر المختلف واربح الجولة.' },
   aks: { label: 'عكس', description: 'اكتب الكلمة بالعكس كما هو مطلوب.' },
   harf: { label: 'حرف', description: 'اكتب كلمة تبدأ بالحرف المحدد أولًا.' },
-  roll: { label: 'رول', description: 'ارمِ النرد واحصل على نتيجة عشوائية.' },
   roulette: { label: 'روليت', description: 'شارك في جولة الروليت واختر مكانك.' },
   mines: { label: 'لغم', description: 'اختر الخانات وحاول تجنب اللغم.' },
   x: { label: 'إكس أو', description: 'تنافس في إكس أو وحاول تكوين ثلاثة متتالية.' },
-  fight: { label: 'قتال', description: 'تحدى لاعبًا آخر في مواجهة قتالية.' },
 };
 
 function hasGamesRole(interaction) {
@@ -28,7 +27,7 @@ function hasGamesRole(interaction) {
 
 function getGameChoices(client) {
   const games = [...(client.gameCommands?.values?.() || [])]
-    .filter((command) => command?.data?.name)
+    .filter((command) => command?.data?.name && !HIDDEN_GAMES.has(command.data.name))
     .sort((a, b) => {
       const aLabel = GAME_INFO[a.data.name]?.label || a.data.name;
       const bLabel = GAME_INFO[b.data.name]?.label || b.data.name;
