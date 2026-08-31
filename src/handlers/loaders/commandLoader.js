@@ -7,7 +7,7 @@ import botConfig from '../../config/bot.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const GAMES_ROLE_ID = '1543013490313400340';
+const GAMES_ROLE_ID = '1543774154279354398';
 const NON_PLAYABLE_FUN_COMMANDS = new Set(['count', 'احصائياتي', 'ايقاف', 'العاب', 'كت']);
 
 function getSubcommandInfo(commandData) {
