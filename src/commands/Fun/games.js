@@ -28,8 +28,12 @@ const GAME_INFO = {
 };
 
 function hasGamesRole(interaction) {
-  return interaction.member?.roles?.cache?.has(GAMES_ROLE_ID)
-    || interaction.member?.roles?.includes?.(GAMES_ROLE_ID);
+  const member = interaction.member;
+  if (!member) return false;
+  if (member.roles?.cache?.has(GAMES_ROLE_ID)) return true;
+  if (Array.isArray(member.roles) && member.roles.includes(GAMES_ROLE_ID)) return true;
+  if (member.roles?.includes?.(GAMES_ROLE_ID)) return true;
+  return false;
 }
 
 function getGameChoices(client) {
