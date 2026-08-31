@@ -1,6 +1,6 @@
 import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
 
-const GAMES_ROLE_ID = '1543013490313400340';
+const GAMES_ROLE_ID = '1543774154279354398';
 
 function hasGamesRole(interaction) {
   return interaction.member?.roles?.cache?.has(GAMES_ROLE_ID)
