@@ -3,19 +3,19 @@ import { getGuildConfig, updateGuildConfig } from './config/guildConfig.js';
 import { logger } from '../utils/logger.js';
 
 export const LOGGING_CHANNEL_DEFINITIONS = {
-  moderation: { name: 'moderation-logs', topic: 'Orbit logs for bans, kicks, mutes, warnings, timeouts, locks and other moderation actions.' },
-  message: { name: 'message-logs', topic: 'Orbit logs for deleted, edited and bulk-deleted messages.' },
-  member: { name: 'member-logs', topic: 'Orbit logs for member joins, leaves and name changes.' },
-  role: { name: 'role-logs', topic: 'Orbit logs for role creation, deletion and updates.' },
-  leveling: { name: 'leveling-logs', topic: 'Orbit logs for level-ups and leveling milestones.' },
-  reactionrole: { name: 'reaction-role-logs', topic: 'Orbit logs for reaction-role creation, updates, deletion and assignments.' },
-  giveaway: { name: 'giveaway-logs', topic: 'Orbit logs for giveaway creation, winners, rerolls and deletion.' },
-  counter: { name: 'counter-logs', topic: 'Orbit logs for counter updates and configuration changes.' },
-  application: { name: 'application-logs', topic: 'Orbit logs for application submissions and reviews.' },
-  report: { name: 'report-logs', topic: 'Orbit logs for user reports filed through Orbit.' },
+  moderation: { name: 'moderation-logs', topic: 'PlayArab logs for bans, kicks, mutes, warnings, timeouts, locks and other moderation actions.' },
+  message: { name: 'message-logs', topic: 'PlayArab logs for deleted, edited and bulk-deleted messages.' },
+  member: { name: 'member-logs', topic: 'PlayArab logs for member joins, leaves and name changes.' },
+  role: { name: 'role-logs', topic: 'PlayArab logs for role creation, deletion and updates.' },
+  leveling: { name: 'leveling-logs', topic: 'PlayArab logs for level-ups and leveling milestones.' },
+  reactionrole: { name: 'reaction-role-logs', topic: 'PlayArab logs for reaction-role creation, updates, deletion and assignments.' },
+  giveaway: { name: 'giveaway-logs', topic: 'PlayArab logs for giveaway creation, winners, rerolls and deletion.' },
+  counter: { name: 'counter-logs', topic: 'PlayArab logs for counter updates and configuration changes.' },
+  application: { name: 'application-logs', topic: 'PlayArab logs for application submissions and reviews.' },
+  report: { name: 'report-logs', topic: 'PlayArab logs for user reports filed through PlayArab.' },
 };
 
-const CATEGORY_NAME = 'ORBIT LOGS';
+const CATEGORY_NAME = 'PLAYARAB LOGS';
 
 function isUsableTextChannel(channel) {
   return channel?.type === ChannelType.GuildText;
@@ -83,18 +83,18 @@ export async function setupLoggingSystem(client, guildId) {
   const currentLogging = config.logging || {};
   const currentChannels = currentLogging.channels || {};
 
+  const channels = { ...currentChannels };
+  delete channels.audit;
+  delete channels.applications;
+  delete channels.reports;
+  Object.assign(channels, result.channels);
+
   await updateGuildConfig(client, guildId, {
     logging: {
       ...currentLogging,
       enabled: true,
       categoryId: result.categoryId,
-      channels: {
-        ...currentChannels,
-        ...result.channels,
-        audit: result.channels.moderation,
-        applications: result.channels.application,
-        reports: result.channels.report,
-      },
+      channels,
     },
   });
 
