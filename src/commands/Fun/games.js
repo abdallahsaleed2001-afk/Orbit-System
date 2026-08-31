@@ -5,6 +5,7 @@ import { getMines } from '../../services/games/minesService.js';
 import { getXO } from '../../services/games/xoService.js';
 import { getRoulette } from '../../services/games/rouletteService.js';
 
+// This is the ONLY role allowed to use the games menu.
 const GAMES_ROLE_ID = '1543774154279354398';
 const HIDDEN_GAMES = new Set(['roll', 'fight', 'flip']);
 const trackedChannels = new Map();
@@ -28,16 +29,17 @@ const GAME_INFO = {
 };
 
 async function hasGamesRole(interaction) {
-  let member = interaction.member;
+  const guild = interaction.guild;
+  const userId = interaction.user?.id;
+  if (!guild || !userId) return false;
 
-  // Prefix commands can carry a stale/cached GuildMember. Fetch the member
-  // directly from Discord so the configured Games role is checked reliably.
-  if (interaction.guild?.members?.fetch && interaction.user?.id) {
-    member = await interaction.guild.members.fetch(interaction.user.id).catch(() => member);
-  }
-
+  // Always fetch the member from Discord. Do not rely on the member attached
+  // to the prefix-command mock interaction or its cached role collection.
+  const member = await guild.members.fetch({ user: userId, force: true }).catch(() => null);
   if (!member) return false;
-  return Boolean(member.roles?.cache?.has(GAMES_ROLE_ID));
+
+  // Check the member's actual role IDs directly.
+  return Array.from(member.roles.cache.keys()).some(roleId => String(roleId) === GAMES_ROLE_ID);
 }
 
 function getGameChoices(client) {
