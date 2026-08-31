@@ -18,6 +18,7 @@ export const SECURITY_DEFAULTS = {
   strikeDecayMs: 24 * 60 * 60 * 1000,
   whitelist: { users: [], roles: [], bots: [] },
   ignoredChannels: [], logChannelId: null,
+  snapshot: { enabled: true },
 };
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }

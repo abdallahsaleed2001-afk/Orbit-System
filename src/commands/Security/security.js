@@ -19,6 +19,7 @@ const PANEL_META = {
   whitelist: ['👤 Whitelist', 'Trusted users, roles and bots bypass security actions.'],
   logs: ['📋 Logs', 'Choose where security incidents are reported.'],
   settings: ['⚙️ Settings', 'Global protection and security behavior.'],
+  snapshot: ['📸 Snapshot', 'Periodic role and permission comparison to detect slow changes.'],
 };
 
 const MAIN_BUTTONS = [
@@ -31,6 +32,7 @@ const MAIN_BUTTONS = [
   ['security_panel_whitelist', '👤 Whitelist', ButtonStyle.Secondary],
   ['security_panel_logs', '📋 Logs', ButtonStyle.Secondary],
   ['security_panel_settings', '⚙️ Settings', ButtonStyle.Secondary],
+  ['security_panel_snapshot', '📸 Snapshot', ButtonStyle.Primary],
   ['security_panel_appeals', '📨 Appeals', ButtonStyle.Primary],
 ];
 
@@ -68,7 +70,7 @@ export function buildSecurityControls(userId) {
   return [
     new ActionRowBuilder().addComponents(...MAIN_BUTTONS.slice(0, 4).map(([id, label, style]) => button(`${id}:${userId}`, label, style))),
     new ActionRowBuilder().addComponents(...MAIN_BUTTONS.slice(4, 8).map(([id, label, style]) => button(`${id}:${userId}`, label, style))),
-    new ActionRowBuilder().addComponents(button(`security_panel_appeals:${userId}`, '📨 Appeals', ButtonStyle.Primary), button(`security_refresh:${userId}`, '🔄 Refresh', ButtonStyle.Success)),
+    new ActionRowBuilder().addComponents(button(`security_panel_snapshot:${userId}`, '📸 Snapshot', ButtonStyle.Primary), button(`security_panel_appeals:${userId}`, '📨 Appeals', ButtonStyle.Primary), button(`security_refresh:${userId}`, '🔄 Refresh', ButtonStyle.Success)),
   ];
 }
 
@@ -124,13 +126,19 @@ export function buildSecurityPanel(config, guild, panel) {
   ];
   else if (panel === 'whitelist') data = [`**Users:** \`${config.whitelist?.users?.length || 0}\``, `**Roles:** \`${config.whitelist?.roles?.length || 0}\``, `**Bots:** \`${config.whitelist?.bots?.length || 0}\``, '', 'Whitelisted accounts bypass Anti-Nuke and AutoMod enforcement where applicable.'];
   else if (panel === 'logs') data = [`**Log channel:** ${config.logChannelId ? `<#${config.logChannelId}>` : '`Not configured`'}`, `**Ignored channels:** \`${config.ignoredChannels?.length || 0}\``, '', 'Security incidents include the executor/member, reason and action taken.'];
+  else if (panel === 'snapshot') data = [
+    `**Timer:** ${config.snapshot?.timerActive ? '🟢 Active' : '🔴 Inactive'}`,
+    `**Last run:** ${config.snapshot?.lastRun ? '<t:' + Math.floor(config.snapshot.lastRun / 1000) + ':R>' : 'Never'}`,
+    `**Last changes:** ${config.snapshot?.lastChanges ?? 'N/A'}`,
+    '', 'Periodically captures server roles, channels and permission overwrites, then compares them to detect slow, gradual unauthorized changes (e.g. someone slowly adding dangerous permissions to a role over multiple edits).',
+  ];
   else data = [`**Global protection:** ${status(config.enabled)}`, `**Anti-Nuke:** ${status(config.antiNuke?.enabled)}`, `**Anti-Raid:** ${status(config.antiRaid?.enabled)}`, `**AutoMod:** ${status(config.autoMod?.enabled)}`, '', 'Use the controls below to change protection without leaving this message.'];
 
   return new EmbedBuilder()
     .setAuthor({ name: 'Infinity Security Center', iconURL: guild.iconURL({ size: 128 }) || undefined })
     .setTitle(title)
     .setDescription(`${description}\n\n${data.join('\n')}`)
-    .setColor(panel === 'nuke' ? 0xed4245 : panel === 'raid' ? 0xf47b67 : panel === 'massRole' ? 0xe67e22 : panel === 'automod' ? 0x5865f2 : panel === 'strikes' ? 0xfee75c : 0x57f287)
+    .setColor(panel === 'nuke' ? 0xed4245 : panel === 'raid' ? 0xf47b67 : panel === 'massRole' ? 0xe67e22 : panel === 'automod' ? 0x5865f2 : panel === 'strikes' ? 0xfee75c : panel === 'snapshot' ? 0x9b59b6 : 0x57f287)
     .setFooter({ text: 'Infinity System • Click a control below • Changes save automatically' })
     .setTimestamp();
 }
@@ -176,6 +184,7 @@ export function buildSecurityPanelControls(userId, panel, config) {
     rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_strikes_refresh'), '🔄 Refresh', ButtonStyle.Success)));
   } else if (panel === 'whitelist') rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_whitelist_users'), '👤 Manage Users', ButtonStyle.Primary), button(id('security_whitelist_roles'), '🎭 Manage Roles', ButtonStyle.Primary), button(id('security_whitelist_bots'), '🤖 Manage Bots', ButtonStyle.Primary)));
   else if (panel === 'logs') rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_logs_channel'), '📋 Set Log Channel', ButtonStyle.Primary), button(id('security_logs_ignored'), '🚫 Ignored Channels')));
+  else if (panel === 'snapshot') rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_snapshot_run'), '🔍 Run Now', ButtonStyle.Primary), button(id('security_snapshot_view'), '📊 View Report', ButtonStyle.Success)));
   else rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_settings_toggle'), config.enabled ? '🟢 Disable Protection' : '🔴 Enable Protection', config.enabled ? ButtonStyle.Danger : ButtonStyle.Success), button(id('security_settings_refresh'), '🔄 Refresh')));
   return rows.slice(0, 5);
 }

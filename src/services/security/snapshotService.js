@@ -242,7 +242,7 @@ function getDangerousPerms(permissionsStr) {
 }
 
 // ── Run a full snapshot cycle: capture, compare, store, report ──
-export async function runSnapshotCycle(guild, client) {
+export async function runSnapshotCycle(guild, client, { force = false } = {}) {
   const guildId = guild.id;
   let config;
   try {
@@ -251,7 +251,7 @@ export async function runSnapshotCycle(guild, client) {
     return;
   }
 
-  if (!config.snapshot?.enabled && !config._manualSnapshot) return;
+  if (!force && !config.snapshot?.enabled && !config._manualSnapshot) return;
 
   try {
     // Take new snapshot
