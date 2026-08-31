@@ -1,3 +1,4 @@
+import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import { securityModalHandlers } from '../../../handlers/securityHandlers.js';
 import { securityAdvancedModalHandlers } from '../../../handlers/securityAdvancedHandlers.js';
 import { securityDashboardModalHandlers } from '../../../handlers/securityDashboardHandlers.js';
@@ -25,6 +26,27 @@ async function saveWhitelist(interaction, client, type) {
   return interaction.reply({ content: `Whitelist updated successfully. **${ids.length}** ${type} entr${ids.length === 1 ? 'y' : 'ies'} saved.`, ephemeral: true });
 }
 
+async function saveLogChannel(interaction, client) {
+  if (!ok(interaction)) return deny(interaction);
+  const raw = interaction.fields.getTextInputValue('value').trim();
+  const channelId = raw.match(/\d{15,25}/)?.[0];
+  if (!channelId) return interaction.reply({ content: '❌ Please provide a valid channel ID.', ephemeral: true });
+
+  const channel = interaction.guild.channels.cache.get(channelId) || await interaction.guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) {
+    return interaction.reply({ content: '❌ The selected channel must be a text or announcement channel.', ephemeral: true });
+  }
+
+  const me = interaction.guild.members.me;
+  const permissions = me ? channel.permissionsFor(me) : null;
+  if (!permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) {
+    return interaction.reply({ content: '❌ I need View Channel, Send Messages and Embed Links in that channel.', ephemeral: true });
+  }
+
+  await updateSecurityConfig(client, interaction.guildId, { logChannelId: channel.id });
+  return interaction.reply({ content: `✅ Security log channel set to ${channel}.`, ephemeral: true });
+}
+
 export default [
   ...securityModalHandlers,
   ...securityAdvancedModalHandlers,
@@ -39,4 +61,6 @@ export default [
   { name: 'security_whitelist_user_modal', execute: (i, c) => saveWhitelist(i, c, 'users') },
   { name: 'security_whitelist_role_modal', execute: (i, c) => saveWhitelist(i, c, 'roles') },
   { name: 'security_whitelist_bot_modal', execute: (i, c) => saveWhitelist(i, c, 'bots') },
+  { name: 'logs_channel_modal2', execute: saveLogChannel },
+  { name: 'security_logs_channel_modal', execute: saveLogChannel },
 ];
