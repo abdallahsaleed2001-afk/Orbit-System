@@ -7,8 +7,9 @@ const AUTO_ACTIONS = new Set(['delete', 'timeout', 'kick', 'ban']);
 
 export const SECURITY_DEFAULTS = {
   enabled: true,
-  antiNuke: { enabled: true, windowMs: 10000, thresholds: { channelDelete: 3, channelCreate: 5, roleDelete: 3, roleCreate: 5, roleUpdate: 1, webhookUpdate: 3, webhookDelete: 2, ban: 5, kick: 5, botAdd: 1 }, action: 'strip', punishments: Object.fromEntries(NukeTypes.map(type => [type, ['ban','kick','botAdd'].includes(type) ? 'ban' : 'strip'])), lockdown: true },
+  antiNuke: { enabled: true, windowMs: 10000, thresholds: { channelDelete: 3, channelCreate: 5, roleDelete: 3, roleCreate: 5, roleUpdate: 1, webhookUpdate: 3, webhookDelete: 2, ban: 5, kick: 5, botAdd: 1 }, action: 'strip', punishments: Object.fromEntries(NukeTypes.map(type => [type, ['ban','kick','botAdd'].includes(type) ? 'ban' : 'strip'])), lockdown: true, lockdownMs: 10 * 60 * 1000 },
   antiRaid: { enabled: true, joins: 8, windowMs: 10000, minAccountAgeMs: 24 * 60 * 60 * 1000, action: 'timeout', punishment: 'timeout', timeoutMs: 10 * 60 * 1000, lockdown: true, lockdownMs: 10 * 60 * 1000 },
+  massRoleAssign: { enabled: true, windowMs: 30000, threshold: 5, action: 'strip', lockdown: true, lockdownMs: 10 * 60 * 1000 },
   autoMod: { enabled: true, spam: { enabled: true, maxMessages: 6, windowMs: 5000, punishment: 'delete' }, duplicate: { enabled: true, maxRepeats: 3, windowMs: 10000, punishment: 'delete' }, repeatedWords: { enabled: true, maxRepeats: 3, minWordLength: 4, punishment: 'delete' }, mentions: { enabled: true, max: 6, punishment: 'delete' }, caps: { enabled: false, ratio: 0.8, minLength: 12, punishment: 'delete' }, invites: { enabled: true, punishment: 'delete' }, links: { enabled: false, punishment: 'delete' }, badWords: { enabled: false, words: [], punishment: 'delete' }, action: 'delete' },
   escalation: [
     { strike: 1, action: 'delete', durationMs: 0 }, { strike: 2, action: 'timeout', durationMs: 60 * 1000 }, { strike: 3, action: 'timeout', durationMs: 10 * 60 * 1000 },
@@ -179,6 +180,81 @@ export async function processAutoMod(message, client) {
   return true;
 }
 
+// ── Persistent counter helpers (DB-backed) ──────────────────────────
+function nukeKey(guildId, executorId, type) { return `security:nuke:${guildId}:${executorId}:${type}`; }
+function raidKey(guildId) { return `security:raid:${guildId}`; }
+function massRoleKey(guildId, executorId) { return `security:massRole:${guildId}:${executorId}`; }
+
+export async function addNukeEvent(guildId, executorId, type, timestamp) {
+  try {
+    const key = nukeKey(guildId, executorId, type);
+    const existing = await getFromDb(key, []);
+    existing.push(timestamp);
+    await setInDb(key, existing);
+  } catch (err) { logger.warn('Failed to persist nuke event', { guildId, error: err.message }); }
+}
+
+export async function getRecentNukeEvents(guildId, executorId, type, windowMs) {
+  try {
+    const key = nukeKey(guildId, executorId, type);
+    const existing = await getFromDb(key, []);
+    const cutoff = Date.now() - windowMs;
+    const filtered = existing.filter(t => t > cutoff);
+    // Clean up old entries in background
+    if (filtered.length !== existing.length) setInDb(key, filtered).catch(() => {});
+    return filtered;
+  } catch (err) { logger.warn('Failed to read nuke events', { guildId, error: err.message }); return []; }
+}
+
+export async function clearNukeEvents(guildId, executorId, type) {
+  try { await setInDb(nukeKey(guildId, executorId, type), []); } catch (err) { logger.warn('Failed to clear nuke events', { error: err.message }); }
+}
+
+export async function addRaidJoin(guildId, timestamp) {
+  try {
+    const key = raidKey(guildId);
+    const existing = await getFromDb(key, []);
+    existing.push(timestamp);
+    await setInDb(key, existing);
+  } catch (err) { logger.warn('Failed to persist raid join', { guildId, error: err.message }); }
+}
+
+export async function getRecentRaidJoins(guildId, windowMs) {
+  try {
+    const key = raidKey(guildId);
+    const existing = await getFromDb(key, []);
+    const cutoff = Date.now() - windowMs;
+    const filtered = existing.filter(t => t > cutoff);
+    if (filtered.length !== existing.length) setInDb(key, filtered).catch(() => {});
+    return filtered;
+  } catch (err) { logger.warn('Failed to read raid joins', { guildId, error: err.message }); return []; }
+}
+
+export async function addMassRoleEvent(guildId, executorId, timestamp) {
+  try {
+    const key = massRoleKey(guildId, executorId);
+    const existing = await getFromDb(key, []);
+    existing.push(timestamp);
+    await setInDb(key, existing);
+  } catch (err) { logger.warn('Failed to persist mass-role event', { guildId, error: err.message }); }
+}
+
+export async function getRecentMassRoleEvents(guildId, executorId, windowMs) {
+  try {
+    const key = massRoleKey(guildId, executorId);
+    const existing = await getFromDb(key, []);
+    const cutoff = Date.now() - windowMs;
+    const filtered = existing.filter(t => t > cutoff);
+    if (filtered.length !== existing.length) setInDb(key, filtered).catch(() => {});
+    return filtered;
+  } catch (err) { logger.warn('Failed to read mass-role events', { guildId, error: err.message }); return []; }
+}
+
+export async function clearMassRoleEvents(guildId, executorId) {
+  try { await setInDb(massRoleKey(guildId, executorId), []); } catch (err) { logger.warn('Failed to clear mass-role events', { error: err.message }); }
+}
+
+// Legacy RAM-based helper (kept for autoMod which uses in-memory state)
 export function getRecentCount(store, mapKey, now, windowMs) {
   const existing = store.get(mapKey) || [];
   return existing.filter(timestamp => now - timestamp <= windowMs);

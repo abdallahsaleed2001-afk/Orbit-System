@@ -1,8 +1,7 @@
 import { AuditLogEvent, PermissionFlagsBits } from 'discord.js';
-import { getSecurityConfig, isWhitelisted, sendSecurityLog } from './securityService.js';
+import { getSecurityConfig, isWhitelisted, sendSecurityLog, addNukeEvent, getRecentNukeEvents, clearNukeEvents } from './securityService.js';
 import { logger } from '../../utils/logger.js';
 
-const counters = new Map();
 const lockdowns = new Map();
 const EVENT_MAP = {
   channelDelete: AuditLogEvent.ChannelDelete,
@@ -16,8 +15,6 @@ const EVENT_MAP = {
   kick: AuditLogEvent.MemberKick,
   botAdd: AuditLogEvent.BotAdd,
 };
-function key(guildId, executorId, type) { return `${guildId}:${executorId}:${type}`; }
-function getRecentCount(store, mapKey, now, windowMs) { return (store.get(mapKey) || []).filter(timestamp => now - timestamp <= windowMs); }
 
 async function findAuditEntry(guild, auditType, targetId = null) {
   const types = Array.isArray(auditType) ? auditType : [auditType];
@@ -46,10 +43,11 @@ async function stripDangerousRoles(member, reason) {
   return true;
 }
 
-async function startLockdown(guild) {
+async function startLockdown(guild, config) {
   if (lockdowns.has(guild.id)) return;
   const me = guild.members.me;
   if (!me?.permissions.has(PermissionFlagsBits.ManageChannels)) return;
+  const lockdownMs = Math.max(1000, config.antiNuke.lockdownMs || 10 * 60 * 1000);
   const channels = new Map();
   for (const channel of guild.channels.cache.values()) {
     if (!channel.permissionOverwrites?.edit || channel.isThread?.()) continue;
@@ -57,7 +55,7 @@ async function startLockdown(guild) {
     channels.set(channel.id, overwrite?.deny?.has(PermissionFlagsBits.SendMessages) ? false : overwrite?.allow?.has(PermissionFlagsBits.SendMessages) ? true : null);
     await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false }, { reason: 'Anti-Nuke emergency lockdown' }).catch(() => {});
   }
-  const state = { channels };
+  const state = { channels, expiresAt: Date.now() + lockdownMs };
   lockdowns.set(guild.id, state);
   const timer = setTimeout(async () => {
     if (lockdowns.get(guild.id) !== state) return;
@@ -67,7 +65,8 @@ async function startLockdown(guild) {
       if (!channel?.permissionOverwrites?.edit) continue;
       await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: previous }, { reason: 'Anti-Nuke emergency lockdown ended' }).catch(() => {});
     }
-  }, 10 * 60 * 1000);
+    await sendSecurityLog(guild.client, guild, { title: 'Anti-Nuke Lockdown Ended', description: 'The temporary nuke lockdown has ended and previous channel permissions were restored.', color: 0x57F287 });
+  }, lockdownMs);
   timer.unref?.();
 }
 
@@ -84,7 +83,7 @@ async function punishExecutor(guild, executor, config, type, reason, targetId) {
     const bot = await guild.members.fetch(targetId).catch(() => null);
     if (bot?.user?.bot && bot.kickable && bot.id !== guild.client.user?.id) await bot.kick('Anti-Nuke: unauthorized bot addition').catch(() => {});
   }
-  if (config.antiNuke.lockdown) await startLockdown(guild);
+  if (config.antiNuke.lockdown) await startLockdown(guild, config);
   await sendSecurityLog(guild.client, guild, { title: 'Anti-Nuke Triggered', description: `**${executor.tag || executor.username}** triggered Anti-Nuke protection.`, fields: [
     { name: 'Operation', value: type, inline: true }, { name: 'Reason', value: reason.slice(0, 1024), inline: true },
     { name: 'Action', value: actionTaken, inline: true }, { name: 'Executor', value: executor.id, inline: true },
@@ -108,13 +107,14 @@ export async function handleAntiNuke(guild, type, targetId = null) {
   if (type === 'webhookUpdate') actualType = entry.action === AuditLogEvent.WebhookDelete ? 'webhookDelete' : 'webhookUpdate';
   const actualThreshold = Number(config.antiNuke.thresholds?.[actualType] || threshold);
   const now = Date.now();
-  const counterKey = key(guild.id, executor.id, actualType);
-  const recent = getRecentCount(counters, counterKey, now, config.antiNuke.windowMs);
-  recent.push(now);
-  counters.set(counterKey, recent);
+
+  // DB-backed counters
+  await addNukeEvent(guild.id, executor.id, actualType, now);
+  const recent = await getRecentNukeEvents(guild.id, executor.id, actualType, config.antiNuke.windowMs);
+
   if (recent.length >= actualThreshold) {
     await punishExecutor(guild, executor, config, actualType, `${actualType} threshold exceeded (${recent.length}/${actualThreshold})`, targetId);
-    counters.delete(counterKey);
+    await clearNukeEvents(guild.id, executor.id, actualType);
   }
 }
 

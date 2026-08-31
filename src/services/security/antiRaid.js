@@ -1,7 +1,6 @@
 import { PermissionFlagsBits } from 'discord.js';
-import { getSecurityConfig, isWhitelisted, sendSecurityLog } from './securityService.js';
+import { getSecurityConfig, isWhitelisted, sendSecurityLog, addRaidJoin, getRecentRaidJoins } from './securityService.js';
 
-const joins = new Map();
 const lockdowns = new Map();
 
 async function restoreLockdown(guild, state) {
@@ -51,9 +50,9 @@ export async function handleMemberJoin(member) {
   if (!config.enabled || !config.antiRaid.enabled || isWhitelisted(member, config)) return;
 
   const now = Date.now();
-  const list = (joins.get(guild.id) || []).filter(t => now - t <= config.antiRaid.windowMs);
-  list.push(now);
-  joins.set(guild.id, list);
+  // DB-backed raid join tracking
+  await addRaidJoin(guild.id, now);
+  const list = await getRecentRaidJoins(guild.id, config.antiRaid.windowMs);
 
   const accountTooNew = now - member.user.createdTimestamp < config.antiRaid.minAccountAgeMs;
   const raidDetected = list.length >= config.antiRaid.joins;

@@ -12,6 +12,7 @@ import { getSecurityConfig } from '../../services/security/securityService.js';
 const PANEL_META = {
   nuke: ['🛡️ Anti-Nuke', 'Protects channels, roles, webhooks, bans and dangerous server changes.'],
   raid: ['🚨 Anti-Raid', 'Detects rapid joins and suspicious new accounts.'],
+  massRole: ['👥 Mass Role', 'Detects mass assignment of dangerous roles to multiple members.'],
   automod: ['🤖 AutoMod', 'Stops spam, duplicates, mentions, invites, links and other abuse.'],
   punishments: ['⚖️ Punishments', 'Every protection rule can have its own punishment.'],
   strikes: ['🏆 Strike Board', 'See members with the most active security strikes and manage them.'],
@@ -23,6 +24,7 @@ const PANEL_META = {
 const MAIN_BUTTONS = [
   ['security_panel_nuke', '🛡️ Anti-Nuke', ButtonStyle.Danger],
   ['security_panel_raid', '🚨 Anti-Raid', ButtonStyle.Primary],
+  ['security_panel_massRole', '👥 Mass Role', ButtonStyle.Primary],
   ['security_panel_automod', '🤖 AutoMod', ButtonStyle.Primary],
   ['security_panel_punishments', '⚖️ Punishments', ButtonStyle.Primary],
   ['security_panel_strikes', '🏆 Strikes', ButtonStyle.Danger],
@@ -54,7 +56,7 @@ export function buildSecurityDashboard(config, guild) {
     .setColor(score >= 100 ? 0x57f287 : score >= 75 ? 0xfee75c : score >= 50 ? 0xf47b67 : 0xed4245)
     .setThumbnail(guild.iconURL({ size: 256 }) || null)
     .addFields(
-      { name: '━━ Protection ━━', value: [`🛡️ Anti-Nuke  ${status(config.antiNuke?.enabled)}`, `🚨 Anti-Raid  ${status(config.antiRaid?.enabled)}`, `🤖 AutoMod    ${status(config.autoMod?.enabled)}`, `🔒 Global     ${status(config.enabled)}`].join('\n'), inline: true },
+      { name: '━━ Protection ━━', value: [`🛡️ Anti-Nuke  ${status(config.antiNuke?.enabled)}`, `🚨 Anti-Raid  ${status(config.antiRaid?.enabled)}`, `👥 Mass Role  ${status(config.massRoleAssign?.enabled)}`, `🤖 AutoMod    ${status(config.autoMod?.enabled)}`, `🔒 Global     ${status(config.enabled)}`].join('\n'), inline: true },
       { name: '━━ Statistics ━━', value: [`⚡ **${config.escalation?.length || 0}** escalation levels`, `🏆 **Strike management** enabled`, `👤 **${whitelistCount}** whitelist entries`, `📋 Logs: ${logValue}`].join('\n'), inline: true },
       { name: '━━ Current Mode ━━', value: config.enabled ? '🟢 **PROTECTED** — security systems are actively monitoring this server.' : '🔴 **DISABLED** — global security protection is currently off.' },
     )
@@ -77,12 +79,20 @@ export function buildSecurityPanel(config, guild, panel) {
     `**Status:** ${status(config.antiNuke?.enabled)}`,
     `**Default action:** \`${config.antiNuke?.action || 'strip'}\``,
     `**Detection window:** \`${Math.round((config.antiNuke?.windowMs || 10000) / 1000)}s\``,
-    `**Lockdown:** ${boolLabel(config.antiNuke?.lockdown)}`,
+    `**Lockdown:** ${boolLabel(config.antiNuke?.lockdown)} • **Duration:** \`${Math.round((config.antiNuke?.lockdownMs || 600000) / 60000)}m\``,
     '', '**Thresholds**',
     `Channels: delete \`${config.antiNuke?.thresholds?.channelDelete ?? 3}\` • create \`${config.antiNuke?.thresholds?.channelCreate ?? 5}\``,
     `Roles: delete \`${config.antiNuke?.thresholds?.roleDelete ?? 3}\` • create \`${config.antiNuke?.thresholds?.roleCreate ?? 5}\` • edit \`${config.antiNuke?.thresholds?.roleUpdate ?? 1}\``,
     `Webhooks: edit \`${config.antiNuke?.thresholds?.webhookUpdate ?? 3}\` • delete \`${config.antiNuke?.thresholds?.webhookDelete ?? 2}\``,
     `Ban \`${config.antiNuke?.thresholds?.ban ?? 5}\` • Kick \`${config.antiNuke?.thresholds?.kick ?? 5}\` • Bot add \`${config.antiNuke?.thresholds?.botAdd ?? 1}\``,
+  ];
+  else if (panel === 'massRole') data = [
+    `**Status:** ${status(config.massRoleAssign?.enabled)}`,
+    `**Action:** \`${config.massRoleAssign?.action || 'strip'}\``,
+    `**Threshold:** \`${config.massRoleAssign?.threshold ?? 5}\` members`,
+    `**Window:** \`${Math.round((config.massRoleAssign?.windowMs || 30000) / 1000)}s\``,
+    `**Lockdown:** ${boolLabel(config.massRoleAssign?.lockdown)} • **Duration:** \`${Math.round((config.massRoleAssign?.lockdownMs || 600000) / 60000)}m\``,
+    '', 'Detects when a user assigns dangerous roles (Admin, Ban, Kick, ManageChannels, etc.) to multiple members within the detection window.',
   ];
   else if (panel === 'raid') data = [
     `**Status:** ${status(config.antiRaid?.enabled)}`,
@@ -120,7 +130,7 @@ export function buildSecurityPanel(config, guild, panel) {
     .setAuthor({ name: 'Infinity Security Center', iconURL: guild.iconURL({ size: 128 }) || undefined })
     .setTitle(title)
     .setDescription(`${description}\n\n${data.join('\n')}`)
-    .setColor(panel === 'nuke' ? 0xed4245 : panel === 'raid' ? 0xf47b67 : panel === 'automod' ? 0x5865f2 : panel === 'strikes' ? 0xfee75c : 0x57f287)
+    .setColor(panel === 'nuke' ? 0xed4245 : panel === 'raid' ? 0xf47b67 : panel === 'massRole' ? 0xe67e22 : panel === 'automod' ? 0x5865f2 : panel === 'strikes' ? 0xfee75c : 0x57f287)
     .setFooter({ text: 'Infinity System • Click a control below • Changes save automatically' })
     .setTimestamp();
 }
@@ -143,10 +153,13 @@ export function buildSecurityPanelControls(userId, panel, config) {
   const rows = [];
   if (panel === 'nuke') {
     rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_nuke_toggle'), config.antiNuke.enabled ? '🟢 Disable' : '🔴 Enable', config.antiNuke.enabled ? ButtonStyle.Success : ButtonStyle.Danger), button(id('security_nuke_window'), `Window: ${Math.round(config.antiNuke.windowMs / 1000)}s`), button(id('security_nuke_lockdown'), `Lockdown: ${config.antiNuke.lockdown ? 'ON' : 'OFF'}`)));
-    rows.push(new ActionRowBuilder().addComponents(button(id('security_nuke_threshold'), 'Threshold Editor', ButtonStyle.Primary), button(id('security_panel_punishments'), '⚖️ Punishments', ButtonStyle.Primary)));
+    rows.push(new ActionRowBuilder().addComponents(button(id('security_nuke_threshold'), 'Threshold Editor', ButtonStyle.Primary), button(id('security_nuke_lockdown_duration'), `Lockdown: ${Math.round((config.antiNuke.lockdownMs || 600000) / 60000)}m`, ButtonStyle.Secondary), button(id('security_panel_punishments'), '⚖️ Punishments', ButtonStyle.Primary)));
   } else if (panel === 'raid') {
     rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_raid_toggle'), config.antiRaid.enabled ? '🟢 Disable' : '🔴 Enable', config.antiRaid.enabled ? ButtonStyle.Success : ButtonStyle.Danger), button(id('security_raid_joins_down'), '− Joins'), button(id('security_raid_joins_up'), '+ Joins'), button(id('security_raid_punishment'), `Punishment: ${config.antiRaid.punishment || 'timeout'}`, ButtonStyle.Primary)));
     rows.push(new ActionRowBuilder().addComponents(button(id('security_raid_window'), `Window: ${Math.round(config.antiRaid.windowMs / 1000)}s`), button(id('security_raid_age'), `Age: ${hours(config.antiRaid.minAccountAgeMs)}h`), button(id('security_raid_lockdown'), `Lockdown: ${config.antiRaid.lockdown ? 'ON' : 'OFF'}`)));
+  } else if (panel === 'massRole') {
+    rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_massRole_toggle'), config.massRoleAssign?.enabled ? '🟢 Disable' : '🔴 Enable', config.massRoleAssign?.enabled ? ButtonStyle.Success : ButtonStyle.Danger), button(id('security_massRole_threshold_down'), '− Threshold'), button(id('security_massRole_threshold_up'), '+ Threshold'), button(id('security_massRole_action'), `Action: ${config.massRoleAssign?.action || 'strip'}`, ButtonStyle.Primary)));
+    rows.push(new ActionRowBuilder().addComponents(button(id('security_massRole_window'), `Window: ${Math.round((config.massRoleAssign?.windowMs || 30000) / 1000)}s`), button(id('security_massRole_lockdown'), `Lockdown: ${config.massRoleAssign?.lockdown ? 'ON' : 'OFF'}`)));
   } else if (panel === 'automod') {
     rows.push(new ActionRowBuilder().addComponents(button(id('security_back'), '← Back'), button(id('security_automod_toggle'), config.autoMod.enabled ? '🟢 Disable' : '🔴 Enable', config.autoMod.enabled ? ButtonStyle.Success : ButtonStyle.Danger), button(id('security_automod_spam_toggle'), `Spam ${boolLabel(config.autoMod.spam.enabled)}`), button(id('security_automod_spam_punishment'), `Spam: ${config.autoMod.spam.punishment}`)));
     rows.push(new ActionRowBuilder().addComponents(button(id('security_automod_dup_toggle'), `Duplicate ${boolLabel(config.autoMod.duplicate.enabled)}`), button(id('security_automod_dup_punishment'), `Duplicate: ${config.autoMod.duplicate.punishment}`), button(id('security_automod_mentions_punishment'), `Mentions: ${config.autoMod.mentions.punishment}`), button(id('security_automod_invites'), `Invites ${boolLabel(config.autoMod.invites.enabled)}`), button(id('security_automod_invites_punishment'), `Invites: ${config.autoMod.invites.punishment}`)));
