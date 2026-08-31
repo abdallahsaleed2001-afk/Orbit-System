@@ -17,6 +17,7 @@ import {
 const PANELS = {
   security_panel_nuke: 'nuke',
   security_panel_raid: 'raid',
+  security_panel_massRole: 'massRole',
   security_panel_automod: 'automod',
   security_panel_punishments: 'punishments',
   security_panel_strikes: 'strikes',
@@ -26,6 +27,7 @@ const PANELS = {
 };
 const NUKE_ACTIONS = ['strip', 'kick', 'ban'];
 const RAID_ACTIONS = ['timeout', 'kick', 'ban'];
+const MASS_ROLE_ACTIONS = ['strip', 'timeout', 'kick', 'ban'];
 const AUTO_ACTIONS = ['delete', 'warn', 'timeout', 'kick', 'ban'];
 const NUKE_KEYS = ['channelDelete', 'channelCreate', 'roleDelete', 'roleCreate', 'roleUpdate', 'webhookUpdate', 'webhookDelete', 'ban', 'kick', 'botAdd'];
 const AUTO_KEYS = ['spam', 'duplicate', 'mentions', 'invites', 'links', 'caps', 'badWords'];
@@ -129,6 +131,7 @@ handlers.push({ name: 'security_settings_toggle', execute: async (i, c) => { if 
 handlers.push({ name: 'security_nuke_toggle', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiNuke: { enabled: !x.antiNuke.enabled } }); return panel(i, c, 'nuke'); } });
 handlers.push({ name: 'security_nuke_window', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiNuke: { windowMs: cycle(x.antiNuke.windowMs, [5000, 10000, 15000, 30000, 60000]) } }); return panel(i, c, 'nuke'); } });
 handlers.push({ name: 'security_nuke_lockdown', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiNuke: { lockdown: !x.antiNuke.lockdown } }); return panel(i, c, 'nuke'); } });
+handlers.push({ name: 'security_nuke_lockdown_duration', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiNuke: { lockdownMs: cycle(x.antiNuke.lockdownMs || 600000, [300000, 600000, 1200000, 1800000, 3600000]) } }); return panel(i, c, 'nuke'); } });
 handlers.push({ name: 'security_nuke_threshold', execute: async i => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(i.client, i.guildId); const t = x.antiNuke.thresholds || {}; return modal(i, 'security_nuke_threshold_modal', 'Anti-Nuke Thresholds', [field('channelDelete', 'Channel deletes', t.channelDelete), field('channelCreate', 'Channel creates', t.channelCreate), field('roleDelete', 'Role deletes', t.roleDelete), field('roleCreate', 'Role creates', t.roleCreate), field('botAdd', 'Bot additions', t.botAdd)]); } });
 
 handlers.push({ name: 'security_raid_toggle', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiRaid: { enabled: !x.antiRaid.enabled } }); return panel(i, c, 'raid'); } });
@@ -138,6 +141,13 @@ handlers.push({ name: 'security_raid_window', execute: async (i, c) => { if (!au
 handlers.push({ name: 'security_raid_age', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiRaid: { minAccountAgeMs: cycle(x.antiRaid.minAccountAgeMs, [0, 3600000, 21600000, 86400000, 604800000, 2592000000]) } }); return panel(i, c, 'raid'); } });
 handlers.push({ name: 'security_raid_lockdown', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiRaid: { lockdown: !x.antiRaid.lockdown } }); return panel(i, c, 'raid'); } });
 handlers.push({ name: 'security_raid_punishment', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiRaid: { punishment: cycle(x.antiRaid.punishment || 'timeout', RAID_ACTIONS) } }); return panel(i, c, 'raid'); } });
+
+handlers.push({ name: 'security_massRole_toggle', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { massRoleAssign: { enabled: !x.massRoleAssign?.enabled } }); return panel(i, c, 'massRole'); } });
+handlers.push({ name: 'security_massRole_threshold_down', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { massRoleAssign: { threshold: Math.max(2, (x.massRoleAssign?.threshold || 5) - 1) } }); return panel(i, c, 'massRole'); } });
+handlers.push({ name: 'security_massRole_threshold_up', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { massRoleAssign: { threshold: Math.min(100, (x.massRoleAssign?.threshold || 5) + 1) } }); return panel(i, c, 'massRole'); } });
+handlers.push({ name: 'security_massRole_action', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { massRoleAssign: { action: cycle(x.massRoleAssign?.action || 'strip', MASS_ROLE_ACTIONS) } }); return panel(i, c, 'massRole'); } });
+handlers.push({ name: 'security_massRole_window', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { massRoleAssign: { windowMs: cycle(x.massRoleAssign?.windowMs || 30000, [10000, 30000, 60000, 120000, 300000]) } }); return panel(i, c, 'massRole'); } });
+handlers.push({ name: 'security_massRole_lockdown', execute: async (i, c) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { massRoleAssign: { lockdown: !x.massRoleAssign?.lockdown } }); return panel(i, c, 'massRole'); } });
 
 const toggleRule = async (i, c, key) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { [key]: { enabled: !x.autoMod[key].enabled } } }); return panel(i, c, 'automod'); };
 const adjust = async (i, c, key, fieldName, delta, min, max) => { if (!authorized(i)) return reject(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { autoMod: { [key]: { [fieldName]: Math.min(max, Math.max(min, x.autoMod[key][fieldName] + delta)) } } }); return panel(i, c, 'automod'); };
