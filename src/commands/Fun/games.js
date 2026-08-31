@@ -27,13 +27,17 @@ const GAME_INFO = {
   x: { label: 'إكس أو', description: 'تنافس في إكس أو وحاول تكوين ثلاثة متتالية.' },
 };
 
-function hasGamesRole(interaction) {
-  const member = interaction.member;
+async function hasGamesRole(interaction) {
+  let member = interaction.member;
+
+  // Prefix commands can carry a stale/cached GuildMember. Fetch the member
+  // directly from Discord so the configured Games role is checked reliably.
+  if (interaction.guild?.members?.fetch && interaction.user?.id) {
+    member = await interaction.guild.members.fetch(interaction.user.id).catch(() => member);
+  }
+
   if (!member) return false;
-  if (member.roles?.cache?.has(GAMES_ROLE_ID)) return true;
-  if (Array.isArray(member.roles) && member.roles.includes(GAMES_ROLE_ID)) return true;
-  if (member.roles?.includes?.(GAMES_ROLE_ID)) return true;
-  return false;
+  return Boolean(member.roles?.cache?.has(GAMES_ROLE_ID));
 }
 
 function getGameChoices(client) {
@@ -132,7 +136,7 @@ export function enableAutoGameMenu(guildId, channelId) {
 }
 
 async function showGames(interaction) {
-  if (!hasGamesRole(interaction)) {
+  if (!(await hasGamesRole(interaction))) {
     return interaction.reply({ content: 'ليس لديك صلاحية استخدام ألعاب البوت.', ephemeral: true });
   }
 
