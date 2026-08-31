@@ -4,7 +4,7 @@ import { getXO, endXO } from '../../services/games/xoService.js';
 import { getRoulette, cancelRoulette } from '../../services/games/rouletteService.js';
 import { disableAutoGameMenu } from './games.js';
 
-const GAMES_ROLE_ID = '1543013490313400340';
+const GAMES_ROLE_ID = '1543774154279354398';
 
 function hasGamesRole(interaction) {
     return interaction.member?.roles?.cache?.has(GAMES_ROLE_ID)
