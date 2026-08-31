@@ -35,6 +35,27 @@ function isNaturalRepeat(text) {
   return false;
 }
 
+function normalizeBlockedText(value) {
+  return normalizeArabic(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}_]+/gu, ' ')
+    .trim();
+}
+
+function matchesBlockedWord(text, blockedWord) {
+  const messageWords = normalizeBlockedText(text).split(/\s+/).filter(Boolean);
+  const blockedWords = normalizeBlockedText(blockedWord).split(/\s+/).filter(Boolean);
+  if (!messageWords.length || !blockedWords.length) return false;
+
+  // Match complete words (or complete multi-word phrases), never substrings.
+  if (blockedWords.length === 1) return messageWords.includes(blockedWords[0]);
+
+  for (let i = 0; i <= messageWords.length - blockedWords.length; i++) {
+    if (blockedWords.every((word, offset) => messageWords[i + offset] === word)) return true;
+  }
+  return false;
+}
+
 function detect(message, config) {
   const text = message.content || '';
   const reasons = [];
@@ -62,10 +83,7 @@ function detect(message, config) {
   if (config.autoMod.mentions.enabled && (message.mentions.everyone || /@(everyone|here)/i.test(text))) reasons.push({ type: 'mentions', reason: 'everyone/here mention' });
   if (config.autoMod.invites.enabled && inviteRegex.test(text)) reasons.push({ type: 'invites', reason: 'Discord invite link' });
   if (config.autoMod.links.enabled && urlRegex.test(text)) reasons.push({ type: 'links', reason: 'external link' });
-  if (config.autoMod.badWords.enabled && config.autoMod.badWords.words.some(word => {
-    const escaped = String(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|\\s)${escaped}(?=$|\\s|[.!?,])`, 'i').test(text);
-  })) reasons.push({ type: 'badWords', reason: 'blocked word' });
+  if (config.autoMod.badWords.enabled && config.autoMod.badWords.words.some(word => matchesBlockedWord(text, word))) reasons.push({ type: 'badWords', reason: 'blocked word' });
   if (!naturalRepeat && repeatedCharRegex.test(text)) reasons.push({ type: 'spam', reason: 'character spam' });
 
   if (config.autoMod.caps.enabled) {
