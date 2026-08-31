@@ -11,9 +11,7 @@ import { EVENT_TYPES } from '../../services/loggingService.js';
 
 const EVENT_TYPES_BY_CATEGORY = Object.values(EVENT_TYPES).reduce((accumulator, eventType) => {
   const [category] = eventType.split('.');
-  if (!accumulator[category]) {
-    accumulator[category] = [];
-  }
+  if (!accumulator[category]) accumulator[category] = [];
   accumulator[category].push(eventType);
   return accumulator;
 }, {});
@@ -57,6 +55,19 @@ export const DASHBOARD_CATEGORY_LABELS = {
   report: 'Reports',
 };
 
+export const LOG_CHANNEL_DESTINATIONS = [
+  { value: 'moderation', label: 'Moderation Logs', description: 'Bans, kicks, mutes, warnings, timeouts and locks', emoji: '🔨' },
+  { value: 'message', label: 'Message Logs', description: 'Deleted, edited and bulk-deleted messages', emoji: '✉️' },
+  { value: 'member', label: 'Member Logs', description: 'Member joins, leaves and name changes', emoji: '👥' },
+  { value: 'role', label: 'Role Logs', description: 'Role creation, deletion and updates', emoji: '🏷️' },
+  { value: 'leveling', label: 'Leveling Logs', description: 'Level-ups and leveling milestones', emoji: '📈' },
+  { value: 'reactionrole', label: 'Reaction Role Logs', description: 'Reaction-role changes and assignments', emoji: '🎭' },
+  { value: 'giveaway', label: 'Giveaway Logs', description: 'Giveaway creation, winners, rerolls and deletion', emoji: '🎁' },
+  { value: 'counter', label: 'Counter Logs', description: 'Counter updates and configuration', emoji: '📊' },
+  { value: 'application', label: 'Application Logs', description: 'Application submissions and reviews', emoji: '📝' },
+  { value: 'report', label: 'Report Logs', description: 'User reports filed through the bot', emoji: '🚨' },
+];
+
 function createBackButton() {
   return new ButtonBuilder()
     .setCustomId('log_dash_back')
@@ -89,41 +100,23 @@ function createCategoryToggleButtons(enabledEvents = {}, loggingEnabled = false)
 }
 
 export function createLoggingMainMenuSelect() {
+  const options = LOG_CHANNEL_DESTINATIONS.map((destination) =>
+    new StringSelectMenuOptionBuilder()
+      .setLabel(`Set ${destination.label}`)
+      .setDescription(destination.description)
+      .setValue(`set:${destination.value}`)
+      .setEmoji(destination.emoji),
+  );
+
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId('log_dash_menu')
-      .setPlaceholder('Choose a setting to configure…')
+      .setPlaceholder('Choose a logging channel to configure…')
       .addOptions(
-        new StringSelectMenuOptionBuilder()
-          .setLabel('Set Audit Log Channel')
-          .setDescription('Moderation, messages, members, roles, etc.')
-          .setValue('set:audit')
-          .setEmoji('🧾'),
-        new StringSelectMenuOptionBuilder()
-          .setLabel('Set Applications Channel')
-          .setDescription('New applications and review updates')
-          .setValue('set:applications')
-          .setEmoji('📝'),
-        new StringSelectMenuOptionBuilder()
-          .setLabel('Set Reports Channel')
-          .setDescription('User reports filed via /report')
-          .setValue('set:reports')
-          .setEmoji('🚨'),
-        new StringSelectMenuOptionBuilder()
-          .setLabel('Clear Audit Channel')
-          .setValue('clear:audit')
-          .setEmoji('🗑️'),
-        new StringSelectMenuOptionBuilder()
-          .setLabel('Clear Applications Channel')
-          .setValue('clear:applications')
-          .setEmoji('🗑️'),
-        new StringSelectMenuOptionBuilder()
-          .setLabel('Clear Reports Channel')
-          .setValue('clear:reports')
-          .setEmoji('🗑️'),
+        ...options,
         new StringSelectMenuOptionBuilder()
           .setLabel('Event Categories')
-          .setDescription('Toggle which log types are sent')
+          .setDescription('Toggle which event types are logged')
           .setValue('view:categories')
           .setEmoji('📋'),
         new StringSelectMenuOptionBuilder()
@@ -138,8 +131,8 @@ export function createLoggingMainMenuSelect() {
 export function createLoggingMainActionRow(loggingEnabled = false) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId('log_dash_toggle:audit_enabled')
-      .setLabel('Audit Logging')
+      .setCustomId('log_dash_toggle:logging_enabled')
+      .setLabel('Logging System')
       .setStyle(loggingEnabled ? ButtonStyle.Success : ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId('log_dash_refresh')
@@ -149,10 +142,7 @@ export function createLoggingMainActionRow(loggingEnabled = false) {
 }
 
 export function createLoggingDashboardComponents(_enabledEvents, loggingEnabled = false) {
-  return [
-    createLoggingMainMenuSelect(),
-    createLoggingMainActionRow(loggingEnabled),
-  ];
+  return [createLoggingMainMenuSelect(), createLoggingMainActionRow(loggingEnabled)];
 }
 
 export function createLoggingCategoryViewComponents(enabledEvents, loggingEnabled = false) {
