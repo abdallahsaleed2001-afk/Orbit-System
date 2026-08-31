@@ -5,6 +5,8 @@ import { sendSecurityLog } from '../../../services/security/securityService.js';
 
 const button = (id, label, style = ButtonStyle.Secondary) => new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);
 const allowed = interaction => interaction.customId.split(':').at(-1) === interaction.user.id;
+const MUTE_ROLE_ID = '1544023085051543714';
+const JAIL_ROLE_ID = '1543728134027874305';
 
 function listEmbed(guild, appeals) {
   const lines = appeals.length
@@ -67,10 +69,16 @@ async function decide(interaction, client, appealId, status) {
         action += ' Active timeout removed.';
       }
     } else if (appeal.type === 'mute') {
-      const muteRole = interaction.guild.roles.cache.get('1535481560172728402');
+      const muteRole = interaction.guild.roles.cache.get(MUTE_ROLE_ID) || await interaction.guild.roles.fetch(MUTE_ROLE_ID).catch(() => null);
       if (muteRole && member.roles.cache.has(muteRole.id)) {
         await member.roles.remove(muteRole, `Appeal #${appeal.id} approved by ${interaction.user.tag}`).catch(() => {});
         action = 'Mute role removed.';
+      }
+    } else if (appeal.type === 'jail') {
+      const jailRole = interaction.guild.roles.cache.get(JAIL_ROLE_ID) || await interaction.guild.roles.fetch(JAIL_ROLE_ID).catch(() => null);
+      if (jailRole && member.roles.cache.has(jailRole.id)) {
+        await member.roles.remove(jailRole, `Appeal #${appeal.id} approved by ${interaction.user.tag}`).catch(() => {});
+        action = 'Jail role removed.';
       }
     }
   }
