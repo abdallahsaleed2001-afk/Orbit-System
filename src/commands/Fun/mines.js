@@ -2,7 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { createMines, MINES_JOIN_MS, startMines, endMines } from '../../services/games/minesService.js';
 import { grid, startMinesTurnTimer } from '../../interactions/buttons/mines/mines.js';
 
-const GAMES_ROLE_ID = '1543013490313400340';
+const GAMES_ROLE_ID = '1543774154279354398';
 const getGuildId = interaction => interaction.guildId || interaction.guild?.id;
 const getChannelId = interaction => interaction.channelId || interaction.channel?.id;
 const hasGamesRole = interaction => interaction.member?.roles?.cache?.has(GAMES_ROLE_ID) || interaction.member?.roles?.includes?.(GAMES_ROLE_ID);
