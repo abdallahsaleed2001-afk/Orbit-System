@@ -11,13 +11,38 @@ function getState(map, key) {
   return map.get(key);
 }
 
+function normalizeArabic(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
+    .replace(/ـ/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .trim();
+}
+
+function isNaturalRepeat(text) {
+  const normalized = normalizeArabic(text).replace(/[\s.,!?،؛:()[\]{}*_~`'"“”‘’]+/g, '');
+  if (!normalized) return false;
+
+  if (/^[ه]{3,}$/u.test(normalized)) return true;
+
+  const words = normalizeArabic(text).split(/\s+/).filter(Boolean);
+  if (words.length > 0 && words.every(word => {
+    const clean = word.replace(/[.,!?،؛:()[\]{}*_~`'"“”‘’]+/g, '');
+    return /^ا?ل+ه$/u.test(clean) && clean.length >= 4;
+  })) return true;
+
+  return false;
+}
+
 function detect(message, config) {
   const text = message.content || '';
   const reasons = [];
   const now = Date.now();
   const key = `${message.guild.id}:${message.author.id}`;
+  const naturalRepeat = isNaturalRepeat(text);
 
-  if (config.autoMod.spam.enabled) {
+  if (config.autoMod.spam.enabled && !naturalRepeat) {
     const list = getState(userMessages, key).filter(t => now - t <= config.autoMod.spam.windowMs);
     list.push(now);
     userMessages.set(key, list);
@@ -25,7 +50,7 @@ function detect(message, config) {
   }
 
   const normalized = text.trim().slice(0, 500).toLowerCase();
-  if (config.autoMod.duplicate.enabled && normalized) {
+  if (config.autoMod.duplicate.enabled && normalized && !naturalRepeat) {
     const list = getState(duplicates, key).filter(x => now - x.time <= config.autoMod.duplicate.windowMs);
     list.push({ text: normalized, time: now });
     duplicates.set(key, list);
@@ -41,7 +66,7 @@ function detect(message, config) {
     const escaped = String(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(`(^|\\s)${escaped}(?=$|\\s|[.!?,])`, 'i').test(text);
   })) reasons.push({ type: 'badWords', reason: 'blocked word' });
-  if (repeatedCharRegex.test(text)) reasons.push({ type: 'spam', reason: 'character spam' });
+  if (!naturalRepeat && repeatedCharRegex.test(text)) reasons.push({ type: 'spam', reason: 'character spam' });
 
   if (config.autoMod.caps.enabled) {
     const letters = text.match(/[A-Za-z]/g) || [];
@@ -57,7 +82,6 @@ async function executeAction(message, action, duration, reason, strike) {
   const member = await message.guild.members.fetch(message.author.id).catch(() => null);
   const config = await getSecurityConfig(message.client, message.guild.id);
 
-  // Whitelist is an absolute bypass: no deletion, timeout, kick, ban, or warning.
   if (!member || isWhitelisted(member, config)) return false;
 
   const deleted = await message.delete().then(() => true).catch(() => false);
@@ -91,7 +115,6 @@ export async function handleAutoMod(message) {
   const violations = detect(message, config);
   if (!violations.length) return false;
 
-  // Re-check immediately before changing strike state in case the whitelist was changed during detection.
   const latestConfig = await getSecurityConfig(message.client, message.guild.id);
   const latestMember = await message.guild.members.fetch(message.author.id).catch(() => member);
   if (!latestMember || latestMember.id === message.guild.ownerId || isWhitelisted(latestMember, latestConfig)) return false;
