@@ -17,6 +17,7 @@ import { botConfig } from '../../config/bot.js';
 
 const GIVEAWAY_MIN_WINNERS = botConfig.giveaways?.minimumWinners ?? 1;
 const GIVEAWAY_MAX_WINNERS = botConfig.giveaways?.maximumWinners ?? 10;
+const GIVEAWAY_ROLE_ID = '1531755257485463623';
 
 export default {
     data: new SlashCommandBuilder()
@@ -51,7 +52,7 @@ export default {
                 .addChannelTypes(ChannelType.GuildText)
                 .setRequired(false),
         )
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+        .setDefaultMemberPermissions(null),
 
     async execute(interaction) {
         // Defer up front: sending the giveaway message + DB write can exceed the 3s window
@@ -66,11 +67,14 @@ export default {
             );
         }
 
-        if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+        const hasManageGuild = interaction.member.permissions.has(PermissionFlagsBits.ManageGuild);
+        const hasGiveawayRole = interaction.member.roles.cache.has(GIVEAWAY_ROLE_ID);
+
+        if (!hasManageGuild && !hasGiveawayRole) {
             throw new TitanBotError(
-                'User lacks ManageGuild permission',
+                'User lacks giveaway permission',
                 ErrorTypes.PERMISSION,
-                "You need the 'Manage Server' permission to start a giveaway.",
+                "You need the 'Manage Server' permission or the required giveaway role to start a giveaway.",
                 { userId: interaction.user.id, guildId: interaction.guildId }
             );
         }
