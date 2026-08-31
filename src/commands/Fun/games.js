@@ -5,7 +5,7 @@ import { getMines } from '../../services/games/minesService.js';
 import { getXO } from '../../services/games/xoService.js';
 import { getRoulette } from '../../services/games/rouletteService.js';
 
-const GAMES_ROLE_ID = '1543013490313400340';
+const GAMES_ROLE_ID = '1543774154279354398';
 const HIDDEN_GAMES = new Set(['roll', 'fight', 'flip']);
 const trackedChannels = new Map();
 const disabledAutoMenuChannels = new Set();
