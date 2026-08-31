@@ -2,6 +2,8 @@ import { getFromDb, setInDb } from '../utils/database.js';
 
 const key = (guildId) => `guild:${guildId}:staff`;
 
+export const STAFF_ROLE_ID = '1531745937280602282';
+
 const DEFAULTS = {
   config: { promotionChannelId: null, demotionChannelId: null, warningChannelId: null, notesChannelId: null, managerRoleId: null, warningsBeforeReview: 3 },
   members: {},
@@ -19,6 +21,35 @@ function normalize(data) {
 
 export async function getStaffData(guildId) { return normalize(await getFromDb(key(guildId), DEFAULTS)); }
 export async function saveStaffData(guildId, data) { const normalized = normalize(data); await setInDb(key(guildId), normalized); return normalized; }
+
+export async function syncStaffRoleMembers(guild) {
+  const data = await getStaffData(guild.id);
+  const members = await guild.members.fetch().catch(() => guild.members.cache);
+  let changed = false;
+
+  for (const member of members.values()) {
+    if (member.user.bot || !member.roles.cache.has(STAFF_ROLE_ID)) continue;
+    if (!data.members[member.id]) {
+      data.members[member.id] = {
+        userId: member.id,
+        joinedAt: member.joinedAt?.toISOString() || new Date().toISOString(),
+        warnings: [],
+        promotions: [],
+        demotions: [],
+        notes: [],
+        activity: {},
+      };
+      changed = true;
+    }
+  }
+
+  if (changed) await saveStaffData(guild.id, data);
+  return data;
+}
+
+export function isStaffMember(member) {
+  return Boolean(member && !member.user?.bot && member.roles?.cache?.has(STAFF_ROLE_ID));
+}
 
 export async function getStaffProfile(guildId, userId, defaults = {}) {
   const data = await getStaffData(guildId);
