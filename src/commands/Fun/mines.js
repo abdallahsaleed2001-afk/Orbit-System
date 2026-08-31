@@ -22,7 +22,7 @@ async function runMines(interaction) {
   if (result.error === 'active') return interaction.reply({ content: 'توجد لعبة لغم نشطة بالفعل في هذه القناة.' });
   const game = result.game;
   const message = await interaction.reply({
-    content: `**INFINITY GAMES — لغم**\n\nالتسجيل مفتوح لمدة **20 ثانية**.\nوقت الدخول: <t:${game.joinEndsAt}:R>\n\nاللاعبون (**1**):\n<@${interaction.user.id}>`,
+    content: `**PlayArab Games — لغم**\n\nالتسجيل مفتوح لمدة **20 ثانية**.\nوقت الدخول: <t:${game.joinEndsAt}:R>\n\nاللاعبون (**1**):\n<@${interaction.user.id}>`,
     components: lobbyRows(game),
     fetchReply: true,
   });
@@ -30,13 +30,13 @@ async function runMines(interaction) {
   game.joinTimer = setTimeout(async () => {
     if (!game.active || game.phase !== 'join') return;
     if (game.players.length < 2) {
-      await message.edit({ content: '**INFINITY GAMES — لغم**\n\nانتهى وقت التسجيل — يجب أن يشارك شخصان على الأقل.', components: [] }).catch(() => {});
+      await message.edit({ content: '**PlayArab Games — لغم**\n\nانتهى وقت التسجيل — يجب أن يشارك شخصان على الأقل.', components: [] }).catch(() => {});
       endMines(game);
       return;
     }
     const started = startMines(game);
     if (!started.ok) return;
-    await message.edit({ content: `**INFINITY GAMES — لغم**\n\nانتهى وقت الدخول. بدأت الجولة **#${game.round}**.\n\nدور: <@${started.player.id}>\nلغم واحد مخفي في هذه الجولة. لديك **10 ثوانٍ**.`, components: grid(game) }).catch(() => {});
+    await message.edit({ content: `**PlayArab Games — لغم**\n\nانتهى وقت الدخول. بدأت الجولة **#${game.round}**.\n\nدور: <@${started.player.id}>\nلغم واحد مخفي في هذه الجولة. لديك **10 ثوانٍ**.`, components: grid(game) }).catch(() => {});
     game.currentMessageId = message.id;
     startMinesTurnTimer(interaction.channel, game);
   }, MINES_JOIN_MS);
