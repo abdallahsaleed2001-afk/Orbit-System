@@ -24,6 +24,13 @@ export default {
                         .setName('file')
                         .setDescription('Upload an image from your device.')
                         .setRequired(false),
+                )
+                .addStringOption((option) =>
+                    option
+                        .setName('message')
+                        .setDescription('Optional message to send with the image.')
+                        .setRequired(false)
+                        .setMaxLength(2000),
                 ),
         ),
     category: 'Core',
@@ -31,6 +38,7 @@ export default {
     async execute(interaction) {
         const url = interaction.options.getString('url');
         const file = interaction.options.getAttachment('file');
+        const message = interaction.options.getString('message');
 
         if (!url && !file) {
             return replyUserError(interaction, {
@@ -80,9 +88,12 @@ export default {
         const deferred = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
         if (!deferred) return;
 
-        const sentMessage = await channel.send({
+        const payload = {
             files: [new AttachmentBuilder(imageSource, { name: fileName })],
-        });
+        };
+        if (message) payload.content = message;
+
+        const sentMessage = await channel.send(payload);
 
         return InteractionHelper.safeEditReply(interaction, {
             embeds: [successEmbed('Image Sent', `The image was sent successfully. [Jump to message](${sentMessage.url})`)],
