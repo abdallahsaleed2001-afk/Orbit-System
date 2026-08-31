@@ -1,6 +1,7 @@
 import { Events, PermissionFlagsBits } from 'discord.js';
 import express from 'express';
 import { registerSecurityDashboard } from '../services/security/securityDashboard.js';
+import { startSnapshotTimer } from '../services/security/snapshotService.js';
 import { logger, startupLog } from '../utils/logger.js';
 
 export default {
@@ -43,6 +44,15 @@ export default {
         logger.warn('SECURITY_DASHBOARD_TOKEN is not configured; /security will be inaccessible.');
       } else {
         startupLog('Security dashboard enabled at /security');
+      }
+
+      // Start snapshot timers for all guilds
+      for (const guild of client.guilds.cache.values()) {
+        try {
+          startSnapshotTimer(guild, client);
+        } catch (err) {
+          logger.warn(`Failed to start snapshot timer for ${guild.name}`, { error: err.message });
+        }
       }
     } catch (error) {
       logger.error('Failed to initialize security dashboard:', error);
