@@ -22,7 +22,7 @@ async function runGameStats(interaction) {
 
     return interaction.reply({
         content: [
-            `**INFINITY GAMES — إحصائيات ${interaction.user.username}**`,
+            `**PlayArab Games — إحصائيات ${interaction.user.username}**`,
             '',
             ...lines,
         ].join('\n'),
