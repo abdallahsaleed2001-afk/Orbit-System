@@ -72,6 +72,13 @@ async function autoModPunishment(interaction, client) {
   return interaction.update({ embeds: [embed(`🤖 ${key} Settings`, `**Status:** ${config.autoMod[key].enabled ? '🟢 ACTIVE' : '🔴 OFF'}\n**Punishment:** **${next}**`, interaction.guild)], components: [row(button(`automod_back:${interaction.user.id}`, '← AutoMod'), button(`automod_toggle:${key}:${interaction.user.id}`, config.autoMod[key].enabled ? '🔴 Disable' : '🟢 Enable', config.autoMod[key].enabled ? ButtonStyle.Danger : ButtonStyle.Success), button(`automod_punishment:${key}:${interaction.user.id}`, `⚖️ ${next}`, ButtonStyle.Primary))] });
 }
 
+async function showLogChannelModal(interaction) {
+  if (!ok(interaction)) return deny(interaction);
+  return interaction.showModal(new ModalBuilder().setCustomId(`logs_channel_modal2:${interaction.user.id}`).setTitle('Security Log Channel').addComponents(
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('value').setLabel('Channel ID').setPlaceholder('123456789012345678').setStyle(TextInputStyle.Short).setRequired(true))
+  ));
+}
+
 export default [
   { name: 'security_panel_strikes2', execute: async (i, c) => ok(i) ? renderStrikes(i, c) : deny(i) },
   { name: 'security_panel_strikes', execute: async (i, c) => ok(i) ? renderStrikes(i, c) : deny(i) },
@@ -88,4 +95,6 @@ export default [
   { name: 'security_final_wl_roles', execute: async (i, c) => ok(i) ? saveWhitelist(i, c, 'roles') : deny(i) },
   { name: 'security_final_wl_bots', execute: async (i, c) => ok(i) ? saveWhitelist(i, c, 'bots') : deny(i) },
   { name: 'automod_punishment', execute: autoModPunishment },
+  { name: 'logs_channel2', execute: showLogChannelModal },
+  { name: 'security_logs_channel', execute: showLogChannelModal },
 ];
