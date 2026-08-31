@@ -24,7 +24,9 @@ function isNaturalRepeat(text) {
   const normalized = normalizeArabic(text).replace(/[\s.,!?،؛:()[\]{}*_~`'"“”‘’]+/g, '');
   if (!normalized) return false;
 
-  if (/^[ه]{3,}$/u.test(normalized)) return true;
+  // Any message containing a laughing sequence (هههه...) is ignored by spam/duplicate/character-spam detection.
+  // This also covers laughter embedded in otherwise normal text, e.g. "شوف ههههههههههههه".
+  if (/ه{3,}/u.test(normalized)) return true;
 
   const words = normalizeArabic(text).split(/\s+/).filter(Boolean);
   if (words.length > 0 && words.every(word => {
