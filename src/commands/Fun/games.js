@@ -85,7 +85,7 @@ async function sendGamesMenu(client, guildId, channelId) {
     .addOptions(choices);
 
   const embed = createEmbed({
-    title: '🎮 PlayArab Games',
+    title: 'PlayArab Games',
     description: 'اختر اللعبة التي تريد لعبها من القائمة بالأسفل.',
     color: 'primary',
   });
@@ -149,7 +149,7 @@ async function showGames(interaction) {
     .addOptions(choices);
 
   const embed = createEmbed({
-    title: '🎮 PlayArab Games',
+    title: 'PlayArab Games',
     description: 'اختر اللعبة التي تريد لعبها من القائمة بالأسفل.',
     color: 'primary',
   });
