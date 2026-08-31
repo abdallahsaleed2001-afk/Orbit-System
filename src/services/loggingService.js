@@ -1,5 +1,3 @@
-// loggingService.js
-
 import { ChannelType } from 'discord.js';
 import { getGuildConfig, updateGuildConfig } from './config/guildConfig.js';
 import { logger } from '../utils/logger.js';
@@ -12,7 +10,6 @@ import {
 } from '../utils/logging/logEmbeds.js';
 
 const LOG_DESTINATIONS = [
-  'audit',
   'moderation',
   'message',
   'member',
@@ -21,8 +18,8 @@ const LOG_DESTINATIONS = [
   'reactionrole',
   'giveaway',
   'counter',
-  'applications',
-  'reports',
+  'application',
+  'report',
 ];
 
 const EVENT_TYPES = {
@@ -156,26 +153,19 @@ const EVENT_ICONS = {
 
 const CATEGORY_DESTINATION = {
   moderation: 'moderation',
-  leveling: 'leveling',
   message: 'message',
-  role: 'role',
   member: 'member',
+  role: 'role',
+  leveling: 'leveling',
   reactionrole: 'reactionrole',
   giveaway: 'giveaway',
   counter: 'counter',
-  application: 'applications',
-  report: 'reports',
+  application: 'application',
+  report: 'report',
 };
 
 export function resolveLogChannel(config, destination) {
-  const channels = config?.logging?.channels || {};
-  if (destination && channels[destination]) {
-    return channels[destination];
-  }
-  if (destination === 'audit') {
-    return channels.audit ?? config?.logging?.channelId ?? config?.logChannelId ?? null;
-  }
-  return channels[destination] ?? null;
+  return config?.logging?.channels?.[destination] ?? null;
 }
 
 export function getIgnoreList(config) {
@@ -183,35 +173,23 @@ export function getIgnoreList(config) {
 }
 
 export function isEventEnabled(config, eventType) {
-  if (!config?.logging?.enabled) {
-    return false;
-  }
-
-  if (!eventType || typeof eventType !== 'string') {
-    return false;
-  }
+  if (!config?.logging?.enabled) return false;
+  if (!eventType || typeof eventType !== 'string') return false;
 
   const category = eventType.split('.')[0];
   const enabledEvents = config.logging.enabledEvents || {};
 
-  if (enabledEvents[eventType] === false) {
-    return false;
-  }
-
-  if (enabledEvents[`${category}.*`] === false) {
-    return false;
-  }
+  if (enabledEvents[eventType] === false) return false;
+  if (enabledEvents[`${category}.*`] === false) return false;
 
   return true;
 }
 
 function getLogChannelForEvent(config, eventType, overrideChannelId = null) {
-  if (overrideChannelId) {
-    return overrideChannelId;
-  }
-
+  if (overrideChannelId) return overrideChannelId;
   const category = eventType?.split('.')[0];
-  const destination = CATEGORY_DESTINATION[category] || 'audit';
+  const destination = CATEGORY_DESTINATION[category];
+  if (!destination) return null;
   return resolveLogChannel(config, destination);
 }
 
@@ -225,9 +203,7 @@ export async function logEvent({
   channelId: overrideChannelId = null,
 }) {
   try {
-    const guild = client.guilds.cache.get(guildId) ||
-      await client.guilds.fetch(guildId).catch(() => null);
-
+    const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
     if (!guild) {
       logger.warn(`logEvent: Guild not found: ${guildId}`);
       return null;
@@ -236,25 +212,14 @@ export async function logEvent({
     const config = await getGuildConfig(client, guildId);
     const ignore = getIgnoreList(config);
 
-    if (data?.userId && ignore.users?.includes(data.userId)) {
-      return null;
-    }
-    if (data?.channelId && ignore.channels?.includes(data.channelId)) {
-      return null;
-    }
-
-    if (!isEventEnabled(config, eventType)) {
-      return null;
-    }
+    if (data?.userId && ignore.users?.includes(data.userId)) return null;
+    if (data?.channelId && ignore.channels?.includes(data.channelId)) return null;
+    if (!isEventEnabled(config, eventType)) return null;
 
     const logChannelId = getLogChannelForEvent(config, eventType, overrideChannelId);
-    if (!logChannelId) {
-      return null;
-    }
+    if (!logChannelId) return null;
 
-    const channel = guild.channels.cache.get(logChannelId) ||
-      await guild.channels.fetch(logChannelId).catch(() => null);
-
+    const channel = guild.channels.cache.get(logChannelId) || await guild.channels.fetch(logChannelId).catch(() => null);
     if (!channel || channel.type !== ChannelType.GuildText) {
       logger.warn(`logEvent: Invalid log channel ${logChannelId} for guild ${guildId}`);
       return null;
@@ -267,14 +232,9 @@ export async function logEvent({
     }
 
     const embed = createLogEmbed(guild, eventType, data);
-
     const messageOptions = { embeds: [embed] };
-    if (content) {
-      messageOptions.content = content;
-    }
-    if (attachments.length > 0) {
-      messageOptions.files = attachments;
-    }
+    if (content) messageOptions.content = content;
+    if (attachments.length > 0) messageOptions.files = attachments;
 
     const sent = await channel.send(messageOptions);
     logger.info(`Event logged: ${eventType} in guild ${guildId}`);
@@ -289,7 +249,6 @@ function createLogEmbed(guild, eventType, data) {
   const color = data.color ?? EVENT_COLORS[eventType] ?? 0x0099ff;
   const icon = EVENT_ICONS[eventType] || '📌';
   const title = data.title || `${icon} ${formatEventType(eventType)}`;
-
   const inlineFields = [];
   let description = data.description || '';
 
@@ -311,18 +270,9 @@ function createLogEmbed(guild, eventType, data) {
 
     if (before !== null || after !== null) {
       const metaLines = fieldsToLines(rest);
-      description = buildLogDescription({
-        headline: description || undefined,
-        lines: metaLines,
-        quoted: true,
-      });
-
-      if (before !== null) {
-        inlineFields.push({ name: 'Before', value: before, inline: true });
-      }
-      if (after !== null) {
-        inlineFields.push({ name: 'After', value: after, inline: true });
-      }
+      description = buildLogDescription({ headline: description || undefined, lines: metaLines, quoted: true });
+      if (before !== null) inlineFields.push({ name: 'Before', value: before, inline: true });
+      if (after !== null) inlineFields.push({ name: 'After', value: after, inline: true });
     } else {
       description = buildLogDescription({
         headline: description || undefined,
@@ -331,19 +281,14 @@ function createLogEmbed(guild, eventType, data) {
       });
     }
   } else if (data.meta?.length) {
-    description = buildLogDescription({
-      headline: description || undefined,
-      meta: data.meta,
-    });
+    description = buildLogDescription({ headline: description || undefined, meta: data.meta });
   }
 
   if (data.section?.body) {
     description = appendContentSection(description, data.section.title || 'Message', data.section.body);
   }
 
-  if (data.inlineFields?.length) {
-    inlineFields.push(...data.inlineFields);
-  }
+  if (data.inlineFields?.length) inlineFields.push(...data.inlineFields);
 
   return buildStandardLogEmbed({
     color,
@@ -359,14 +304,8 @@ function createLogEmbed(guild, eventType, data) {
 }
 
 function formatEventType(eventType) {
-  if (!eventType || typeof eventType !== 'string') {
-    return 'Unknown Event';
-  }
-
-  return eventType
-    .split('.')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+  if (!eventType || typeof eventType !== 'string') return 'Unknown Event';
+  return eventType.split('.').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
 
 export async function getLoggingStatus(client, guildId) {
@@ -376,7 +315,7 @@ export async function getLoggingStatus(client, guildId) {
   return {
     enabled: logging.enabled || false,
     channels: logging.channels || {},
-    channelId: logging.channels?.audit ?? null,
+    channelId: null,
     ignore: getIgnoreList(config),
     enabledEvents: logging.enabledEvents || {},
     allEventTypes: EVENT_TYPES,
@@ -386,15 +325,16 @@ export async function getLoggingStatus(client, guildId) {
 export async function toggleEventLogging(client, guildId, eventTypes, enabled) {
   try {
     const config = await getGuildConfig(client, guildId);
-    const logging = { ...config.logging, enabledEvents: { ...(config.logging?.enabledEvents || {}) } };
+    const logging = {
+      ...config.logging,
+      enabledEvents: { ...(config.logging?.enabledEvents || {}) },
+    };
     const types = Array.isArray(eventTypes) ? eventTypes : [eventTypes];
 
     types.forEach((type) => {
       if (type.endsWith('.*')) {
         const category = type.replace('.*', '');
-        const matchingTypes = Object.values(EVENT_TYPES).filter(
-          (eventType) => eventType.startsWith(`${category}.`),
-        );
+        const matchingTypes = Object.values(EVENT_TYPES).filter((eventType) => eventType.startsWith(`${category}.`));
         matchingTypes.forEach((eventType) => {
           logging.enabledEvents[eventType] = enabled;
         });
@@ -419,26 +359,22 @@ export async function setLogChannel(client, guildId, destination, channelId) {
 
   try {
     const config = await getGuildConfig(client, guildId);
+    const currentChannels = { ...(config.logging?.channels || {}) };
+    if (channelId) currentChannels[destination] = channelId;
+    else delete currentChannels[destination];
+
     const logging = {
       ...config.logging,
-      channels: { ...(config.logging?.channels || {}), [destination]: channelId },
+      channels: currentChannels,
     };
 
-    if (channelId) {
-      logging.enabled = true;
-    }
-
+    if (channelId) logging.enabled = true;
     await updateGuildConfig(client, guildId, { logging });
     return true;
   } catch (error) {
     logger.error('Error setting log channel:', error);
     return false;
   }
-}
-
-/** @deprecated Use setLogChannel(client, guildId, 'audit', channelId) */
-export async function setLoggingChannel(client, guildId, channelId) {
-  return setLogChannel(client, guildId, 'audit', channelId);
 }
 
 export async function setLoggingEnabled(client, guildId, enabled) {
@@ -460,17 +396,13 @@ export async function updateIgnoreList(client, guildId, { action, type, id }) {
     const listKey = type === 'user' ? 'users' : 'channels';
     const current = [...(ignore[listKey] || [])];
 
-    if (action === 'add' && !current.includes(id)) {
-      current.push(id);
-    } else if (action === 'remove') {
+    if (action === 'add' && !current.includes(id)) current.push(id);
+    else if (action === 'remove') {
       const index = current.indexOf(id);
-      if (index !== -1) {
-        current.splice(index, 1);
-      }
+      if (index !== -1) current.splice(index, 1);
     }
 
     ignore[listKey] = current;
-
     const logging = { ...config.logging, ignore };
     await updateGuildConfig(client, guildId, { logging });
     return true;
@@ -482,7 +414,7 @@ export async function updateIgnoreList(client, guildId, { action, type, id }) {
 
 export function resolveApplicationLogChannel(config, roleSettings = {}, appSettings = {}) {
   return roleSettings.logChannelId
-    || config?.logging?.channels?.applications
+    || config?.logging?.channels?.application
     || appSettings.logChannelId
     || null;
 }
