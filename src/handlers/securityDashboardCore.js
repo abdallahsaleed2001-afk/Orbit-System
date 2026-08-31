@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelSelectMenuBuilder, ChannelType, LabelBuilder, ModalBuilder, MessageFlags } from 'discord.js';
 import { getSecurityConfig, updateSecurityConfig, getStrikes, clearStrikes } from '../services/security/securityService.js';
 import { emergencyLockdown, releaseEmergencyLockdown, isEmergencyLockdownActive } from '../services/security/emergencyLockdownService.js';
 import { buildSecurityDashboard as buildOriginalSecurityDashboard, buildSecurityControls } from '../commands/Security/security.js';
@@ -32,6 +32,21 @@ async function panel(interaction, client, type) {
   return interaction.update({ embeds: [embed(title, description, interaction.guild, color)], components });
 }
 async function strikes(interaction, client) { const members = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache); const entries = []; for (const member of members.values()) { if (member.user.bot) continue; const strike = await getStrikes(client, interaction.guildId, member.id).catch(() => ({ count: 0 })); if (strike.count) entries.push({ id: member.id, count: strike.count }); } entries.sort((a, b) => b.count - a.count); const text = entries.slice(0, 10).map((entry, index) => `${index + 1}. <@${entry.id}> — **${entry.count}** strikes`).join('\n') || 'No active strikes.'; return interaction.update({ embeds: [embed('🏆 Strikes & Warnings', text, interaction.guild, 0xfee75c)], components: [row(button(`security_back2:${interaction.user.id}`, '← Back'), button(`strikes_refresh2:${interaction.user.id}`, '🔄 Refresh', ButtonStyle.Success))] }); }
+async function showLogChannelModal(interaction) {
+  const modalId = `security_logs_channel_modal:${interaction.user.id}`;
+  const select = new ChannelSelectMenuBuilder()
+    .setCustomId('security_log_channel')
+    .setPlaceholder('Select a text channel…')
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement);
+  const label = new LabelBuilder()
+    .setLabel('Security Log Channel')
+    .setDescription('Choose where security incidents should be reported.')
+    .setChannelSelectMenuComponent(select);
+  const modal = new ModalBuilder().setCustomId(modalId).setTitle('Set Security Log Channel').addLabelComponents(label);
+  return interaction.showModal(modal);
+}
 const panelHandlers = { security_panel_nuke2: 'nuke', security_panel_raid2: 'raid', security_panel_punishments2: 'punishments', security_panel_whitelist2: 'whitelist', security_panel_logs2: 'logs', security_panel_settings2: 'settings', security_panel_nuke: 'nuke', security_panel_raid: 'raid', security_panel_punishments: 'punishments', security_panel_whitelist: 'whitelist', security_panel_logs: 'logs', security_panel_settings: 'settings' };
 export const securityDashboardButtonHandlers = [
   ...Object.entries(panelHandlers).map(([name, type]) => ({ name, execute: async (interaction, client) => ok(interaction) ? panel(interaction, client, type) : deny(interaction) })),
@@ -40,6 +55,7 @@ export const securityDashboardButtonHandlers = [
   { name: 'security_back2', execute: async (interaction, client) => ok(interaction) ? dashboard(interaction, client) : deny(interaction) },
   { name: 'security_back', execute: async (interaction, client) => ok(interaction) ? dashboard(interaction, client) : deny(interaction) },
   { name: 'security_refresh', execute: async (interaction, client) => ok(interaction) ? dashboard(interaction, client) : deny(interaction) },
+  { name: 'logs_channel2', execute: async (interaction) => ok(interaction) ? showLogChannelModal(interaction) : deny(interaction) },
   { name: 'security_emergency_lockdown', execute: async (i, c) => { if (!ok(i)) return deny(i); await i.deferUpdate(); try { if (isEmergencyLockdownActive(i.guildId)) { const result = await releaseEmergencyLockdown(i.guild, `Emergency lockdown released by ${i.user.tag}`); await i.followUp({ content: `🔓 Emergency lockdown released. Restored ${result.changed} channels.`, ephemeral: true }); } else { const result = await emergencyLockdown(i.guild, `Emergency lockdown activated by ${i.user.tag}`); await i.followUp({ content: `🚨 Emergency lockdown activated. Locked ${result.changed} channels. The administration category remains open.`, ephemeral: true }); } } catch (error) { await i.followUp({ content: `❌ Emergency lockdown failed: ${error.message}`, ephemeral: true }); } return dashboard(i, c); } },
   { name: 'nuke_toggle2', execute: async (i, c) => { if (!ok(i)) return deny(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiNuke: { enabled: !x.antiNuke.enabled } }); return panel(i, c, 'nuke'); } },
   { name: 'nuke_lock2', execute: async (i, c) => { if (!ok(i)) return deny(i); const x = await getSecurityConfig(c, i.guildId); await updateSecurityConfig(c, i.guildId, { antiNuke: { lockdown: !x.antiNuke.lockdown } }); return panel(i, c, 'nuke'); } },
