@@ -16,6 +16,7 @@ export async function sendPunishmentDM({ user, guild, type, duration = null, rea
   try {
     const labels = {
       mute: { label: '🔇 Mute', action: 'muted' },
+      jail: { label: '🔒 Jail', action: 'jailed' },
       timeout: { label: '⏳ Timeout', action: 'timed out' },
       warn: { label: '⚠️ Warning', action: 'warned' },
     };
