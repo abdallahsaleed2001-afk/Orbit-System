@@ -13,6 +13,8 @@ import {
   getStaffData,
   getStaffLeaderboard,
   getStaffProfile,
+  syncStaffRoleMembers,
+  STAFF_ROLE_ID,
   updateStaffConfig,
   addStaffWarning,
   addPromotion,
@@ -99,12 +101,20 @@ export default {
   execute: withErrorHandling(async (interaction) => {
     if (!interaction.inGuild()) return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
     const sub = interaction.options.getSubcommand();
-    const data = await getStaffData(interaction.guildId);
+    const data = await syncStaffRoleMembers(interaction.guild);
 
-    if (sub === 'dashboard') return interaction.reply({ embeds: [dashboardEmbed(interaction.guild, data)], components: dashboardButtons() });
+    if (sub === 'dashboard') {
+      const members = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
+      const activeIds = new Set([...members.values()].filter(member => !member.user.bot && member.roles.cache.has(STAFF_ROLE_ID)).map(member => member.id));
+      const activeData = { ...data, members: Object.fromEntries(Object.entries(data.members).filter(([id]) => activeIds.has(id))) };
+      return interaction.reply({ embeds: [dashboardEmbed(interaction.guild, activeData)], components: dashboardButtons() });
+    }
 
     if (sub === 'leaderboard') {
-      const leaderboard = getStaffLeaderboard(data, 10);
+      const members = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
+      const activeIds = new Set([...members.values()].filter(member => !member.user.bot && member.roles.cache.has(STAFF_ROLE_ID)).map(member => member.id));
+      const activeData = { ...data, members: Object.fromEntries(Object.entries(data.members).filter(([id]) => activeIds.has(id))) };
+      const leaderboard = getStaffLeaderboard(activeData, 10);
       if (!leaderboard.length) return interaction.reply({ content: 'No staff performance data exists yet.', ephemeral: true });
       const lines = leaderboard.map((entry, index) => {
         const activity = entry.profile?.activity || {};
