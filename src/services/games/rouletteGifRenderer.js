@@ -70,7 +70,7 @@ export function drawRouletteFrame(game,selectedIndex=null,rotation=0){
 
   rect(p,w,h,14,14,672,472,panel);
   rect(p,w,h,14,14,4,472,blue);
-  text(p,w,h,'INFINITY GAMES',34,30,3,white);
+  text(p,w,h,'PlayArab Games',34,30,3,white);
   text(p,w,h,`ROULETTE  /  ROUND ${game.round}`,34,56,1,muted);
 
   const cx=350,cy=266,r=205,count=Math.max(2,game.participants.length),step=Math.PI*2/count;
