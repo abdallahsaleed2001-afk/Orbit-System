@@ -162,7 +162,18 @@ export function compareSnapshots(previous, current) {
 }
 
 export async function runSnapshotCycle(guild, client, { force = false } = {}) {
-  const guildId = guild.id;
+  const guildId = guild?.id;
+  if (!guildId || !client?.guilds?.cache) {
+    logger.error('Snapshot cycle skipped: invalid guild/client reference', { guildId });
+    return null;
+  }
+
+  const currentGuild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
+  if (!currentGuild?.roles?.cache || !currentGuild?.channels?.cache) {
+    logger.error('Snapshot cycle skipped: guild managers unavailable', { guildId });
+    return null;
+  }
+
   let config;
   try {
     config = await getSecurityConfig(client, guildId);
@@ -172,7 +183,7 @@ export async function runSnapshotCycle(guild, client, { force = false } = {}) {
   }
   if (!force && !config.snapshot?.enabled && !config._manualSnapshot) return;
   try {
-    const newSnapshot = await takeSnapshot(guild);
+    const newSnapshot = await takeSnapshot(currentGuild);
     const { previous } = await getSnapshots(guildId);
     const { changes, summary } = compareSnapshots(previous, newSnapshot);
     await storeSnapshot(guildId, newSnapshot);
@@ -181,7 +192,7 @@ export async function runSnapshotCycle(guild, client, { force = false } = {}) {
       const color = criticalCount > 0 ? 0xed4245 : changes.some(c => c.severity === 'high') ? 0xf47b67 : 0xfee75c;
       const fields = changes.slice(0, 10).map((c, i) => ({ name: `${i + 1}. [${c.severity.toUpperCase()}] ${c.type.replace(/_/g, ' ')}`, value: c.detail.slice(0, 1024), inline: false }));
       if (changes.length > 10) fields.push({ name: '...and more', value: `+${changes.length - 10} additional change(s) not shown.`, inline: false });
-      await sendSecurityLog(client, guild, { title: 'Snapshot Comparison Alert', description: summary, color, fields });
+      await sendSecurityLog(client, currentGuild, { title: 'Snapshot Comparison Alert', description: summary, color, fields });
       logger.info('Snapshot comparison detected changes', { guildId, changeCount: changes.length, critical: criticalCount });
     } else logger.debug('Snapshot comparison: no changes', { guildId });
     return { changes, summary, timestamp: newSnapshot.timestamp };
@@ -193,12 +204,19 @@ export async function runSnapshotCycle(guild, client, { force = false } = {}) {
 
 const activeTimers = new Map();
 export function startSnapshotTimer(guild, client) {
-  stopSnapshotTimer(guild.id);
+  const guildId = typeof guild === 'string' ? guild : guild?.id;
+  if (!guildId || !client?.guilds?.cache) {
+    logger.error('Snapshot timer not started: invalid guild/client reference', { guildId });
+    return;
+  }
+
+  stopSnapshotTimer(guildId);
   const intervalMs = DEFAULT_INTERVAL_MS;
-  const timer = setInterval(() => { runSnapshotCycle(guild, client).catch(() => {}); }, intervalMs);
-  activeTimers.set(guild.id, timer);
-  setTimeout(() => { runSnapshotCycle(guild, client).catch(() => {}); }, 30 * 1000);
-  logger.info(`Snapshot timer started for ${guild.name} (interval: ${Math.round(intervalMs / 3600000)}h)`);
+  const run = () => runSnapshotCycle(guildId ? { id: guildId } : guild, client).catch(() => {});
+  const timer = setInterval(run, intervalMs);
+  activeTimers.set(guildId, timer);
+  setTimeout(run, 30 * 1000);
+  logger.info(`Snapshot timer started for ${guild?.name || guildId} (interval: ${Math.round(intervalMs / 3600000)}h)`);
 }
 export function stopSnapshotTimer(guildId) {
   const timer = activeTimers.get(guildId);
