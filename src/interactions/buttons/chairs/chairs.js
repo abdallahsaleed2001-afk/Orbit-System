@@ -16,7 +16,7 @@ function playersList(game) {
 }
 
 function lobbyContent(game) {
-  return `**INFINITY GAMES \u{1fa91} كراسي**\n\nالتسجيل مفتوح لمدة **20 ثانية**.\nوقت الدخول: <t:${game.joinEndsAt}:R>\n\nاللاعبون (**${game.players.length}**):\n${playersList(game)}`;
+  return `**PlayArab Games \u{1fa91} كراسي**\n\nالتسجيل مفتوح لمدة **20 ثانية**.\nوقت الدخول: <t:${game.joinEndsAt}:R>\n\nاللاعبون (**${game.players.length}**):\n${playersList(game)}`;
 }
 
 function lobbyComponents(game) {
@@ -54,7 +54,7 @@ function roundContent(game, extra = '') {
   const chairsCount = game.players.length - 1;
   const isFinal = game.players.length === 2;
   const title = isFinal ? '\u{1f3c6} الجولة النهائية!' : `الجولة **#${game.round}**`;
-  return `**INFINITY GAMES \u{1fa91} كراسي**\n\n${title}\nاللاعبون: **${game.players.length}** \u{1fa91} الكراسي: **${chairsCount}**\nجلس: **${game.seated.size}** / **${chairsCount}**${extra ? `\n\n${extra}` : ''}`;
+  return `**PlayArab Games \u{1fa91} كراسي**\n\n${title}\nاللاعبون: **${game.players.length}** \u{1fa91} الكراسي: **${chairsCount}**\nجلس: **${game.seated.size}** / **${chairsCount}**${extra ? `\n\n${extra}` : ''}`;
 }
 
 export async function startRound(channel, game) {
@@ -68,7 +68,7 @@ export async function startRound(channel, game) {
 
   // Ready phase (2 seconds)
   game.phase = 'ready';
-  const readyText = `**INFINITY GAMES \u{1fa91} كراسي**\n\n${isFinal ? '\u{1f3c6} الجولة النهائية!' : `الجولة **#${game.round}**`}\nاللاعبون: **${game.players.length}** \u{1fa91} الكراسي: **${result.chairsCount}**\n\n\u23f3 استعدوا...`;
+  const readyText = `**PlayArab Games \u{1fa91} كراسي**\n\n${isFinal ? '\u{1f3c6} الجولة النهائية!' : `الجولة **#${game.round}**`}\nاللاعبون: **${game.players.length}** \u{1fa91} الكراسي: **${result.chairsCount}**\n\n\u23f3 استعدوا...`;
 
   await channel.send({ content: readyText }).catch(() => {});
 
@@ -126,7 +126,7 @@ async function finishGame(channel, game) {
 
   if (winner) {
     await channel.send({
-      content: `**INFINITY GAMES \u{1fa91} كراسي**\n\n\u{1f3c6} الفائز: <@${winner.id}>!\n\nالجولات: **${game.round}** | اللاعبون: **${game.players.length + game.eliminated.length}**`,
+      content: `**PlayArab Games \u{1fa91} كراسي**\n\n\u{1f3c6} الفائز: <@${winner.id}>!\n\nالجولات: **${game.round}** | اللاعبون: **${game.players.length + game.eliminated.length}**`,
       components: [],
     }).catch(() => {});
     await recordGameResult(game.guildId, 'chairs', [winner.id], loserIds);
