@@ -100,6 +100,12 @@ export default {
   category: 'Community',
   execute: withErrorHandling(async (interaction) => {
     if (!interaction.inGuild()) return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+
+    const member = interaction.member;
+    if (!member?.roles?.cache?.has(STAFF_ROLE_ID)) {
+      return interaction.reply({ content: 'You are not a staff member and cannot use the /staff commands.', ephemeral: true });
+    }
+
     const sub = interaction.options.getSubcommand();
     const data = await syncStaffRoleMembers(interaction.guild);
 
@@ -145,6 +151,7 @@ export default {
 
     if (sub === 'profile') {
       const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (!member?.roles?.cache?.has(STAFF_ROLE_ID)) return interaction.reply({ content: 'That user is not a staff member.', ephemeral: true });
       const profile = await getStaffProfile(interaction.guildId, user.id, { joinedAt: member?.joinedAt?.toISOString() });
       return interaction.reply({ embeds: [new EmbedBuilder()
         .setTitle('Staff Profile')
@@ -164,6 +171,8 @@ export default {
     }
 
     if (sub === 'warn') {
+      const targetMember = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (!targetMember?.roles?.cache?.has(STAFF_ROLE_ID)) return interaction.reply({ content: 'That user is not a staff member.', ephemeral: true });
       const reason = interaction.options.getString('reason', true);
       await addStaffWarning(interaction.guildId, user.id, interaction.user.id, reason);
       const profile = await getStaffProfile(interaction.guildId, user.id);
@@ -183,6 +192,8 @@ export default {
     if (newRole.position >= interaction.guild.members.me.roles.highest.position || removeRole.position >= interaction.guild.members.me.roles.highest.position) return interaction.reply({ content: 'I cannot manage one of these roles because it is above my highest role.', ephemeral: true });
 
     if (sub === 'promote' || sub === 'demote') {
+      const targetIsStaff = target.roles.cache.has(STAFF_ROLE_ID);
+      if (!targetIsStaff) return interaction.reply({ content: 'That user is not a staff member.', ephemeral: true });
       const resetProfile = interaction.options.getBoolean('reset_profile', true);
       await target.roles.remove(removeRole).catch(() => null);
       await target.roles.add(newRole);
@@ -199,6 +210,8 @@ export default {
     }
 
     if (sub === 'note') {
+      const targetMember = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (!targetMember?.roles?.cache?.has(STAFF_ROLE_ID)) return interaction.reply({ content: 'That user is not a staff member.', ephemeral: true });
       const note = interaction.options.getString('note', true);
       await addStaffNote(interaction.guildId, user.id, interaction.user.id, note);
       return interaction.reply({ content: `Private staff note added for ${user}.`, ephemeral: true });
