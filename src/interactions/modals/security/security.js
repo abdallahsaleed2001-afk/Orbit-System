@@ -51,16 +51,22 @@ async function saveMentionsMax(interaction, client) {
   if (!ok(interaction)) return deny(interaction);
 
   const raw = interaction.fields.getTextInputValue('max').trim();
-  const max = Number.parseInt(raw, 10);
-  if (!Number.isInteger(max) || max < 1 || max > 100) {
+  const max = Number(raw);
+  if (!Number.isInteger(max) || max < 1 || max > 100 || String(max) !== raw) {
     return interaction.reply({ content: '❌ Please enter a whole number between **1** and **100**.', ephemeral: true });
   }
 
-  await updateSecurityConfig(client, interaction.guildId, {
+  const updated = await updateSecurityConfig(client, interaction.guildId, {
     autoMod: { mentions: { max } },
   });
 
-  return interaction.reply({ content: `✅ Maximum mentions set to **${max}**. AutoMod will trigger the mentions rule at ${max} mentions or more.`, ephemeral: true });
+  const savedMax = Number(updated?.autoMod?.mentions?.max);
+  return interaction.reply({
+    content: savedMax === max
+      ? `✅ Maximum mentions set to **${savedMax}**. AutoMod will trigger the mentions rule at ${savedMax} mentions or more.`
+      : '❌ The mention limit could not be saved.',
+    ephemeral: true,
+  });
 }
 
 export default [
