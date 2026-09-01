@@ -4,6 +4,7 @@ import { getActiveGame } from '../../services/games/gameService.js';
 import { getMines } from '../../services/games/minesService.js';
 import { getXO } from '../../services/games/xoService.js';
 import { getRoulette } from '../../services/games/rouletteService.js';
+import { hasActiveChairs } from '../../services/games/chairsService.js';
 
 // This is the ONLY role allowed to use the games menu.
 const GAMES_ROLE_ID = '1543774154279354398';
@@ -26,6 +27,7 @@ const GAME_INFO = {
   roulette: { label: 'روليت', description: 'شارك في جولة الروليت واختر مكانك.' },
   mines: { label: 'لغم', description: 'اختر الخانات وحاول تجنب اللغم.' },
   x: { label: 'إكس أو', description: 'تنافس في إكس أو وحاول تكوين ثلاثة متتالية.' },
+  chairs: { label: 'كراسي', description: 'سباق للجلوس على الكراسي - آخر واحد يخرج.' },
 };
 
 async function hasGamesRole(interaction) {
@@ -69,6 +71,7 @@ function hasActiveGame(guildId, channelId) {
     || getMines(guildId, channelId)
     || getXO(guildId, channelId)
     || getRoulette(guildId, channelId)
+    || hasActiveChairs(guildId, channelId)
   );
 }
 

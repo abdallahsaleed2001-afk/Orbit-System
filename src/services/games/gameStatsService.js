@@ -4,6 +4,7 @@ export const GAME_NAMES = {
     roulette: 'الروليت',
     mines: 'لغم',
     xo: 'إكس أو',
+    chairs: 'كراسي',
     fakk: 'فكك',
     ashbak: 'اشبك',
     asra: 'أسرع',
