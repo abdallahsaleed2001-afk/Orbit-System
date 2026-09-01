@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { startFlags } from '../../services/games/flagsService.js';
+import { startFlags, handleFlagsMessage } from '../../services/games/flagsService.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -14,6 +14,15 @@ export default {
   async execute(interaction) {
     const game = startFlags(interaction.guildId, interaction.channel.id);
     if (game.error === 'active') return interaction.reply({ content: '⚠️ توجد جولة أعلام نشطة بالفعل في هذه القناة.' });
-    return interaction.reply({ content: game.prompt });
+
+    await interaction.reply({ content: game.prompt });
+
+    const collector = interaction.channel.createMessageCollector({ time: 20_000 });
+    collector.on('collect', async message => {
+      try {
+        const handled = await handleFlagsMessage(message);
+        if (handled) collector.stop('winner');
+      } catch {}
+    });
   },
 };
