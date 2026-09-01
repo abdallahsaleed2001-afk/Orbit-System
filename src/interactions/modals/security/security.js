@@ -47,6 +47,22 @@ async function saveLogChannel(interaction, client) {
   return interaction.reply({ content: `✅ Security log channel set to ${channel}.`, ephemeral: true });
 }
 
+async function saveMentionsMax(interaction, client) {
+  if (!ok(interaction)) return deny(interaction);
+
+  const raw = interaction.fields.getTextInputValue('max').trim();
+  const max = Number.parseInt(raw, 10);
+  if (!Number.isInteger(max) || max < 1 || max > 100) {
+    return interaction.reply({ content: '❌ Please enter a whole number between **1** and **100**.', ephemeral: true });
+  }
+
+  await updateSecurityConfig(client, interaction.guildId, {
+    autoMod: { mentions: { max } },
+  });
+
+  return interaction.reply({ content: `✅ Maximum mentions set to **${max}**. AutoMod will trigger the mentions rule at ${max} mentions or more.`, ephemeral: true });
+}
+
 export default [
   ...securityModalHandlers,
   ...securityAdvancedModalHandlers,
@@ -63,4 +79,5 @@ export default [
   { name: 'security_whitelist_bot_modal', execute: (i, c) => saveWhitelist(i, c, 'bots') },
   { name: 'logs_channel_modal2', execute: saveLogChannel },
   { name: 'security_logs_channel_modal', execute: saveLogChannel },
+  { name: 'automod_mentions_max_modal', execute: saveMentionsMax },
 ];
