@@ -26,7 +26,7 @@ async function runChairs(interaction) {
 
   const game = result.game;
   const message = await interaction.reply({
-    content: `**INFINITY GAMES \u{1fa91} كراسي**\n\nالتسجيل مفتوح لمدة **20 ثانية**.\nوقت الدخول: <t:${game.joinEndsAt}:R>\n\nاللاعبون (**1**):\n<@${interaction.user.id}>`,
+    content: `**PlayArab Games \u{1fa91} كراسي**\n\nالتسجيل مفتوح لمدة **20 ثانية**.\nوقت الدخول: <t:${game.joinEndsAt}:R>\n\nاللاعبون (**1**):\n<@${interaction.user.id}>`,
     components: lobbyRows(game),
     fetchReply: true,
   });
@@ -35,7 +35,7 @@ async function runChairs(interaction) {
   game.joinTimer = setTimeout(async () => {
     if (!game.active || game.phase !== 'join') return;
     if (game.players.length < 2) {
-      await message.edit({ content: '**INFINITY GAMES \u{1fa91} كراسي**\n\n\u{1f4f1} انتهى وقت التسجيل — يجب أن يشارك شخصان على الأقل.', components: [] }).catch(() => {});
+      await message.edit({ content: '**PlayArab Games \u{1fa91} كراسي**\n\n\u{1f4f1} انتهى وقت التسجيل — يجب أن يشارك شخصان على الأقل.', components: [] }).catch(() => {});
       endChairs(game);
       return;
     }
