@@ -101,7 +101,7 @@ export async function handleFlagsMessage(message) {
 
   activeRounds.delete(stateKey);
   await recordGameResult(message.guild.id, GAME, [message.author.id], []);
-  await message.channel.send(`🏆 ${message.author} **أجاب بشكل صحيح!**\nالدولة هي **${round.answers[0]}**.`).catch(() => {});
+  await message.channel.send(`🏆 ${message.author} **أجاب بشكل صحيح!**`).catch(() => {});
   return true;
 }
 
