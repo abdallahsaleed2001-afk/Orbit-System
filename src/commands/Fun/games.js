@@ -34,13 +34,8 @@ async function hasGamesRole(interaction) {
   const guild = interaction.guild;
   const userId = interaction.user?.id;
   if (!guild || !userId) return false;
-
-  // Always fetch the member from Discord. Do not rely on the member attached
-  // to the prefix-command mock interaction or its cached role collection.
   const member = await guild.members.fetch({ user: userId, force: true }).catch(() => null);
   if (!member) return false;
-
-  // Check the member's actual role IDs directly.
   return Array.from(member.roles.cache.keys()).some(roleId => String(roleId) === GAMES_ROLE_ID);
 }
 
@@ -83,10 +78,9 @@ function trackChannel(interaction) {
   trackedChannels.set(key, { guildId, channelId, wasActive: hasActiveGame(guildId, channelId) });
 }
 
-async function sendGamesMenu(client, guildId, channelId) {
+export async function sendGamesMenu(client, guildId, channelId) {
   const channel = client.channels.cache.get(channelId);
   if (!channel?.isTextBased?.()) return;
-
   const choices = getGameChoices(client);
   if (!choices.length) return;
 
@@ -112,19 +106,14 @@ async function sendGamesMenu(client, guildId, channelId) {
 function startAutoMenu(client) {
   if (autoMenuIntervalStarted) return;
   autoMenuIntervalStarted = true;
-
   setInterval(async () => {
     for (const [key, state] of trackedChannels) {
       const active = hasActiveGame(state.guildId, state.channelId);
-
       if (state.wasActive && !active) {
         state.wasActive = false;
-        if (!disabledAutoMenuChannels.has(key)) {
-          await sendGamesMenu(client, state.guildId, state.channelId);
-        }
+        if (!disabledAutoMenuChannels.has(key)) await sendGamesMenu(client, state.guildId, state.channelId);
         continue;
       }
-
       state.wasActive = active;
     }
   }, 500);
@@ -141,36 +130,16 @@ export function enableAutoGameMenu(guildId, channelId) {
 }
 
 async function showGames(interaction) {
-  if (!(await hasGamesRole(interaction))) {
-    return interaction.reply({ content: 'ليس لديك صلاحية استخدام ألعاب البوت.', ephemeral: true });
-  }
-
+  if (!(await hasGamesRole(interaction))) return interaction.reply({ content: 'ليس لديك صلاحية استخدام ألعاب البوت.', ephemeral: true });
   const choices = getGameChoices(interaction.client);
-  if (!choices.length) {
-    return interaction.reply({ content: 'لا توجد ألعاب متاحة حاليًا.', ephemeral: true });
-  }
-
+  if (!choices.length) return interaction.reply({ content: 'لا توجد ألعاب متاحة حاليًا.', ephemeral: true });
   enableAutoGameMenu(interaction.guildId, interaction.channelId || interaction.channel?.id);
   trackChannel(interaction);
   startAutoMenu(interaction.client);
 
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId('games_menu')
-    .setPlaceholder('اختر لعبة')
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(choices);
-
-  const embed = createEmbed({
-    title: 'PlayArab Games',
-    description: 'اختر اللعبة التي تريد لعبها من القائمة بالأسفل.',
-    color: 'primary',
-  });
-
-  return interaction.reply({
-    embeds: [embed],
-    components: [new ActionRowBuilder().addComponents(menu)],
-  });
+  const menu = new StringSelectMenuBuilder().setCustomId('games_menu').setPlaceholder('اختر لعبة').setMinValues(1).setMaxValues(1).addOptions(choices);
+  const embed = createEmbed({ title: 'PlayArab Games', description: 'اختر اللعبة التي تريد لعبها من القائمة بالأسفل.', color: 'primary' });
+  return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
 }
 
 export default {
