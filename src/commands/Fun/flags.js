@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { startFlags, handleFlagsMessage } from '../../services/games/flagsService.js';
+import { sendGamesMenu } from './games.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -23,6 +24,10 @@ export default {
         const handled = await handleFlagsMessage(message);
         if (handled) collector.stop('winner');
       } catch {}
+    });
+
+    collector.on('end', async () => {
+      await sendGamesMenu(interaction.client, interaction.guildId, interaction.channel.id);
     });
   },
 };
