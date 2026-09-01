@@ -31,11 +31,10 @@ function snapshotIntervalKey(guildId) { return `security:snapshot_timer:${guildI
 export async function takeSnapshot(guild) {
   const timestamp = Date.now();
 
-  // Capture roles
   const roles = {};
   const sortedRoles = [...guild.roles.cache.values()].sort((a, b) => b.position - a.position);
   for (const role of sortedRoles.slice(0, MAX_SNAPSHOT_SIZE)) {
-    if (role.managed) continue; // skip integration/bot roles
+    if (role.managed) continue;
     roles[role.id] = {
       name: role.name,
       permissions: role.permissions.bitfield.toString(),
@@ -46,7 +45,6 @@ export async function takeSnapshot(guild) {
     };
   }
 
-  // Capture channel permission overwrites (only text + voice)
   const overwrites = {};
   const channels = [...guild.channels.cache.values()]
     .filter(c => c.isTextBased() || c.isVoiceBased())
@@ -57,7 +55,7 @@ export async function takeSnapshot(guild) {
     for (const [targetId, perm] of channel.permissionOverwrites.cache) {
       ow.push({
         id: targetId,
-        type: perm.type, // 0 = role, 1 = member
+        type: perm.type,
         allow: perm.allow.bitfield.toString(),
         deny: perm.deny.bitfield.toString(),
       });
@@ -73,14 +71,8 @@ export async function storeSnapshot(guildId, snapshot) {
   try {
     const latestKey = snapshotKey(guildId);
     const prevKey = snapshotPrevKey(guildId);
-
-    // Move current latest to previous
     const current = await getFromDb(latestKey, null);
-    if (current) {
-      await setInDb(prevKey, current);
-    }
-
-    // Store new snapshot as latest
+    if (current) await setInDb(prevKey, current);
     await setInDb(latestKey, snapshot);
     return true;
   } catch (err) {
@@ -103,6 +95,22 @@ export async function getSnapshots(guildId) {
   }
 }
 
+// ── Permission helpers ─────────────────────────────────────────
+function permissionSet(permissionsStr) {
+  try {
+    const value = BigInt(permissionsStr || '0');
+    return new Set(
+      Object.keys(DANGEROUS_PERMS).filter(flag => (value & BigInt(flag)) !== 0n),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function getDangerousPerms(permissionsStr) {
+  return [...permissionSet(permissionsStr)].map(flag => DANGEROUS_PERMS[flag] || flag);
+}
+
 // ── Compare two snapshots and detect dangerous changes ──────────
 export function compareSnapshots(previous, current) {
   if (!previous || !current) return { changes: [], summary: 'No baseline snapshot to compare against.' };
@@ -111,12 +119,10 @@ export function compareSnapshots(previous, current) {
   const prevRoles = previous.roles || {};
   const currRoles = current.roles || {};
 
-  // 1. Check for new dangerous permissions on existing roles
   for (const [roleId, role] of Object.entries(currRoles)) {
     const prev = prevRoles[roleId];
 
     if (!prev) {
-      // New role created - check for dangerous perms
       const dangerous = getDangerousPerms(role.permissions);
       if (dangerous.length > 0) {
         changes.push({
@@ -131,10 +137,9 @@ export function compareSnapshots(previous, current) {
       continue;
     }
 
-    // Existing role - check permission changes
-    const prevPerms = new Set(prev.permissions.split(','));
-    const currPerms = new Set(role.permissions.split(','));
-    const addedPerms = [...currPerms].filter(p => !prevPerms.has(p) && DANGEROUS_FLAG_SET.has(p));
+    const prevPerms = permissionSet(prev.permissions);
+    const currPerms = permissionSet(role.permissions);
+    const addedPerms = [...currPerms].filter(p => !prevPerms.has(p));
 
     if (addedPerms.length > 0) {
       const permNames = addedPerms.map(p => DANGEROUS_PERMS[p] || p);
@@ -148,7 +153,6 @@ export function compareSnapshots(previous, current) {
       });
     }
 
-    // Check for position changes (role hierarchy manipulation)
     if (role.position !== prev.position && Math.abs(role.position - prev.position) >= 3) {
       changes.push({
         type: 'role_position_change',
@@ -160,7 +164,6 @@ export function compareSnapshots(previous, current) {
     }
   }
 
-  // 2. Check for deleted roles that had dangerous permissions
   for (const [roleId, role] of Object.entries(prevRoles)) {
     if (!currRoles[roleId]) {
       const dangerous = getDangerousPerms(role.permissions);
@@ -177,19 +180,20 @@ export function compareSnapshots(previous, current) {
     }
   }
 
-  // 3. Check channel overwrites for new dangerous grants
   const prevOW = previous.overwrites || {};
   const currOW = current.overwrites || {};
 
   for (const [channelId, overrides] of Object.entries(currOW)) {
-    const prevOverrides = (prevOW[channelId] || []).reduce((map, ow) => { map[`${ow.type}:${ow.id}`] = ow; return map; }, {});
+    const prevOverrides = (prevOW[channelId] || []).reduce((map, ow) => {
+      map[`${ow.type}:${ow.id}`] = ow;
+      return map;
+    }, {});
 
     for (const ow of overrides) {
       const key = `${ow.type}:${ow.id}`;
       const prev = prevOverrides[key];
 
       if (!prev) {
-        // New overwrite - check for dangerous allow permissions
         const dangerous = getDangerousPerms(ow.allow);
         if (dangerous.length > 0) {
           changes.push({
@@ -205,10 +209,9 @@ export function compareSnapshots(previous, current) {
         continue;
       }
 
-      // Existing overwrite - check for newly allowed dangerous perms
-      const prevAllow = new Set(prev.allow.split(','));
-      const currAllow = new Set(ow.allow.split(','));
-      const addedAllow = [...currAllow].filter(p => !prevAllow.has(p) && DANGEROUS_FLAG_SET.has(p));
+      const prevAllow = permissionSet(prev.allow);
+      const currAllow = permissionSet(ow.allow);
+      const addedAllow = [...currAllow].filter(p => !prevAllow.has(p));
 
       if (addedAllow.length > 0) {
         const permNames = addedAllow.map(p => DANGEROUS_PERMS[p] || p);
@@ -225,7 +228,6 @@ export function compareSnapshots(previous, current) {
     }
   }
 
-  // Sort by severity
   const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
   changes.sort((a, b) => (severityOrder[a.severity] ?? 9) - (severityOrder[b.severity] ?? 9));
 
@@ -236,37 +238,26 @@ export function compareSnapshots(previous, current) {
   return { changes, summary };
 }
 
-// ── Helper: extract dangerous permission names from a bigint string ──
-function getDangerousPerms(permissionsStr) {
-  return (permissionsStr || '').split(',').filter(p => DANGEROUS_FLAG_SET.has(p)).map(p => DANGEROUS_PERMS[p] || p);
-}
-
 // ── Run a full snapshot cycle: capture, compare, store, report ──
 export async function runSnapshotCycle(guild, client, { force = false } = {}) {
   const guildId = guild.id;
   let config;
   try {
     config = await getSecurityConfig(client, guildId);
-  } catch {
-    return;
+  } catch (err) {
+    logger.error('Snapshot config read failed', { guildId, error: err?.message || String(err), stack: err?.stack });
+    return null;
   }
 
   if (!force && !config.snapshot?.enabled && !config._manualSnapshot) return;
 
   try {
-    // Take new snapshot
     const newSnapshot = await takeSnapshot(guild);
-
-    // Get previous for comparison
     const { previous } = await getSnapshots(guildId);
-
-    // Compare
     const { changes, summary } = compareSnapshots(previous, newSnapshot);
 
-    // Store
     await storeSnapshot(guildId, newSnapshot);
 
-    // Report if there are changes
     if (changes.length > 0) {
       const criticalCount = changes.filter(c => c.severity === 'critical').length;
       const color = criticalCount > 0 ? 0xed4245 : changes.some(c => c.severity === 'high') ? 0xf47b67 : 0xfee75c;
@@ -295,7 +286,12 @@ export async function runSnapshotCycle(guild, client, { force = false } = {}) {
 
     return { changes, summary, timestamp: newSnapshot.timestamp };
   } catch (err) {
-    logger.error('Snapshot cycle failed', { guildId, error: err.message });
+    logger.error('Snapshot cycle failed', {
+      guildId,
+      error: err?.message || String(err),
+      stack: err?.stack,
+      name: err?.name,
+    });
     return null;
   }
 }
@@ -313,7 +309,6 @@ export function startSnapshotTimer(guild, client) {
 
   activeTimers.set(guild.id, timer);
 
-  // Take initial snapshot after 30 seconds (let the bot fully load)
   setTimeout(() => {
     runSnapshotCycle(guild, client).catch(() => {});
   }, 30 * 1000);
@@ -345,9 +340,7 @@ export async function generateSnapshotReport(guild, client) {
   const ageStr = age < 60000 ? 'just now' : age < 3600000 ? `${Math.round(age / 60000)}m ago` : `${Math.round(age / 3600000)}h ago`;
 
   let comparison = { changes: [], summary: 'No previous snapshot to compare.' };
-  if (previous) {
-    comparison = compareSnapshots(previous, latest);
-  }
+  if (previous) comparison = compareSnapshots(previous, latest);
 
   const roleCount = Object.keys(latest.roles || {}).length;
   const channelCount = Object.keys(latest.overwrites || {}).length;
@@ -356,9 +349,9 @@ export async function generateSnapshotReport(guild, client) {
     { name: 'Last Snapshot', value: ageStr, inline: true },
     { name: 'Roles Tracked', value: String(roleCount), inline: true },
     { name: 'Channels Tracked', value: String(channelCount), inline: true },
-  { name: 'Previous Snapshot', value: previous ? new Date(previous.timestamp).toLocaleString() : 'None', inline: true },
-  { name: 'Changes Detected', value: String(comparison.changes.length), inline: true },
-  { name: 'Status', value: comparison.changes.length === 0 ? 'All clear' : `${comparison.changes.filter(c => c.severity === 'critical').length} critical issues`, inline: true },
+    { name: 'Previous Snapshot', value: previous ? new Date(previous.timestamp).toLocaleString() : 'None', inline: true },
+    { name: 'Changes Detected', value: String(comparison.changes.length), inline: true },
+    { name: 'Status', value: comparison.changes.length === 0 ? 'All clear' : `${comparison.changes.filter(c => c.severity === 'critical').length} critical issues`, inline: true },
   ];
 
   if (comparison.changes.length > 0) {
