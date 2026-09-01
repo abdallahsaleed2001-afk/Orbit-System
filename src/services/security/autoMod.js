@@ -4,6 +4,7 @@ const userMessages = new Map();
 const duplicates = new Map();
 const inviteRegex = /(discord\.gg|discord(?:app)?\.com\/invite)\/[^\s]+/i;
 const urlRegex = /https?:\/\/[^\s]+/i;
+const allowedLinkRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be|youtube-nocookie\.com|tiktok\.com)(?:[/:?\s]|$)/i;
 const repeatedCharRegex = /(.)\1{8,}/u;
 
 function getState(map, key) {
@@ -91,7 +92,7 @@ function detect(message, config) {
   if (config.autoMod.mentions.enabled && mentionCount >= config.autoMod.mentions.max) reasons.push({ type: 'mentions', reason: `mention spam (${mentionCount})` });
   if (config.autoMod.mentions.enabled && (message.mentions.everyone || /@(everyone|here)/i.test(text))) reasons.push({ type: 'mentions', reason: 'everyone/here mention' });
   if (config.autoMod.invites.enabled && inviteRegex.test(text)) reasons.push({ type: 'invites', reason: 'Discord invite link' });
-  if (config.autoMod.links.enabled && urlRegex.test(text)) reasons.push({ type: 'links', reason: 'external link' });
+  if (config.autoMod.links.enabled && urlRegex.test(text) && !allowedLinkRegex.test(text)) reasons.push({ type: 'links', reason: 'external link' });
   if (config.autoMod.badWords.enabled && config.autoMod.badWords.words.some(word => matchesBlockedWord(text, word))) reasons.push({ type: 'badWords', reason: 'blocked word' });
   if (!naturalRepeat && repeatedCharRegex.test(text)) reasons.push({ type: 'spam', reason: 'character spam' });
 
