@@ -131,7 +131,7 @@ async function finishGame(channel, game) {
     }).catch(() => {});
     await recordGameResult(game.guildId, 'chairs', [winner.id], loserIds);
   } else {
-    await channel.send({ content: '**INFINITY GAMES \u{1fa91} كراسي**\n\n\u274c انتهت اللعبة بدون فائز.', components: [] }).catch(() => {});
+    await channel.send({ content: '**PlayArab Games \u{1fa91} كراسي**\n\n\u274c انتهت اللعبة بدون فائز.', components: [] }).catch(() => {});
   }
 
   endChairs(game);
@@ -171,7 +171,7 @@ async function handleButton(interaction, client) {
     if (result.error) return interaction.reply({ content: 'أنت لست داخل اللعبة.', ephemeral: true });
     if (result.empty) {
       endChairs(game);
-      return interaction.update({ content: '**INFINITY GAMES \u{1fa91} كراسي**\n\n\u274c تم إلغاء اللعبة لعدم وجود لاعبين.', components: [] });
+      return interaction.update({ content: '**PlayArab Games \u{1fa91} كراسي**\n\n\u274c تم إلغاء اللعبة لعدم وجود لاعبين.', components: [] });
     }
     if (game.phase === 'join') {
       return interaction.update({ content: lobbyContent(game), components: lobbyComponents(game) });
@@ -190,7 +190,7 @@ async function handleButton(interaction, client) {
     if (game.phase !== 'join') return interaction.reply({ content: 'اللعبة بدأت بالفعل.', ephemeral: true });
     if (game.players.length < 2) return interaction.reply({ content: 'يجب أن يشارك شخصان على الأقل.', ephemeral: true });
     if (game.joinTimer) { clearTimeout(game.joinTimer); game.joinTimer = null; }
-    await interaction.update({ content: `**INFINITY GAMES \u{1fa91} كراسي**\n\n\u25b6\ufe0f بدأت اللعبة!`, components: [] }).catch(() => {});
+    await interaction.update({ content: `**PlayArab Games \u{1fa91} كراسي**\n\n\u25b6\ufe0f بدأت اللعبة!`, components: [] }).catch(() => {});
     return startRound(interaction.channel, game);
   }
 
