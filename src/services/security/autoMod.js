@@ -24,24 +24,24 @@ function isNaturalRepeat(text) {
   const normalized = normalizeArabic(text).replace(/[\s.,!?،؛:()[\]{}*_~`'"“”‘’]+/g, '');
   if (!normalized) return false;
 
-  // Natural laughter is not considered intentional spam, even when embedded in normal text.
+  // Natural laughter, including when embedded in otherwise normal text.
   if (/ه{3,}/u.test(normalized)) return true;
+
+  // Natural repeated letters inside a recognizable word/expression.
+  // Collapse runs of the same character and check whether the result still
+  // looks like ordinary text rather than a message made purely of noise.
+  const collapsed = normalized.replace(/(.)\1{2,}/gu, '$1');
+  const hasArabicWord = /[\u0600-\u06FF]{2,}/u.test(collapsed);
+  const hasLatinWord = /[A-Za-z]{2,}/u.test(collapsed);
+  if ((hasArabicWord || hasLatinWord) && collapsed.length >= 2 && normalized.length >= collapsed.length + 2) {
+    return true;
+  }
 
   const words = normalizeArabic(text).split(/\s+/).filter(Boolean);
   if (words.length > 0 && words.every(word => {
     const clean = word.replace(/[.,!?،؛:()[\]{}*_~`'"“”‘’]+/g, '');
     return /^ا?ل+ه$/u.test(clean) && clean.length >= 4;
   })) return true;
-
-  // Treat character stretching as natural expression when the repeated character is
-  // attached to an otherwise meaningful-looking word, e.g. ايواااااا / لااااا / nooooo.
-  // Pure repeated characters such as aaaaaaaaaaaa are still treated as spam.
-  const stretchedWord = /(?:[\p{L}\p{N}])(?:[\p{L}\p{N}]*)([\p{L}])\1{3,}(?:[\p{L}\p{N}]*)/u;
-  if (stretchedWord.test(normalized)) {
-    const collapsed = normalized.replace(/([\p{L}\p{N}])\1+/gu, '$1');
-    const uniqueCharacters = new Set(Array.from(collapsed)).size;
-    if (collapsed.length >= 2 && uniqueCharacters >= 2) return true;
-  }
 
   return false;
 }
