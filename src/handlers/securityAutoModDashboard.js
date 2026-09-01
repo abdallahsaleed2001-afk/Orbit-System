@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { getSecurityConfig, updateSecurityConfig } from '../services/security/securityService.js';
 
 const RULES = {
@@ -123,9 +123,32 @@ export default [
     execute: async (i, client) => {
       if (!ok(i)) return deny(i);
       const key = parseKey(i);
+
+      if (key === 'mentions') {
+        const x = await getSecurityConfig(client, i.guildId);
+        return i.showModal(
+          new ModalBuilder()
+            .setCustomId(`automod_mentions_max_modal:${i.user.id}`)
+            .setTitle('Maximum Mentions')
+            .addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                  .setCustomId('max')
+                  .setLabel('Maximum mentions before punishment')
+                  .setPlaceholder('Example: 5')
+                  .setValue(String(x.autoMod.mentions.max ?? 3))
+                  .setStyle(TextInputStyle.Short)
+                  .setRequired(true)
+                  .setMinLength(1)
+                  .setMaxLength(3),
+              ),
+            ),
+        );
+      }
+
       const x = await getSecurityConfig(client, i.guildId);
       const rule = x.autoMod[key];
-      const patch = key === 'spam' ? { maxMessages: rule.maxMessages >= 12 ? 3 : rule.maxMessages + 1 } : key === 'duplicate' ? { maxRepeats: rule.maxRepeats >= 8 ? 2 : rule.maxRepeats + 1 } : key === 'mentions' ? { max: rule.max >= 15 ? 3 : rule.max + 1 } : key === 'caps' ? { ratio: rule.ratio >= 0.95 ? 0.5 : Number((rule.ratio + 0.05).toFixed(2)) } : {};
+      const patch = key === 'spam' ? { maxMessages: rule.maxMessages >= 12 ? 3 : rule.maxMessages + 1 } : key === 'duplicate' ? { maxRepeats: rule.maxRepeats >= 8 ? 2 : rule.maxRepeats + 1 } : key === 'caps' ? { ratio: rule.ratio >= 0.95 ? 0.5 : Number((rule.ratio + 0.05).toFixed(2)) } : {};
       await updateSecurityConfig(client, i.guildId, { autoMod: { [key]: patch } });
       return rulePage(i, client, key);
     },
