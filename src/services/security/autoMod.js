@@ -23,34 +23,30 @@ function normalizeArabic(value) {
 function isNaturalRepeat(text) {
   const normalized = normalizeArabic(text).replace(/[\s.,!?،؛:()[\]{}*_~`'"“”‘’]+/g, '');
   if (!normalized) return false;
-
-  // Natural laughter, including when embedded in otherwise normal text.
   if (/ه{3,}/u.test(normalized)) return true;
 
-  // Natural repeated letters inside a recognizable word/expression.
-  // Collapse runs of the same character and check whether the result still
-  // looks like ordinary text rather than a message made purely of noise.
   const collapsed = normalized.replace(/(.)\1{2,}/gu, '$1');
   const hasArabicWord = /[\u0600-\u06FF]{2,}/u.test(collapsed);
   const hasLatinWord = /[A-Za-z]{2,}/u.test(collapsed);
-  if ((hasArabicWord || hasLatinWord) && collapsed.length >= 2 && normalized.length >= collapsed.length + 2) {
-    return true;
-  }
+  if ((hasArabicWord || hasLatinWord) && collapsed.length >= 2 && normalized.length >= collapsed.length + 2) return true;
 
   const words = normalizeArabic(text).split(/\s+/).filter(Boolean);
   if (words.length > 0 && words.every(word => {
     const clean = word.replace(/[.,!?،؛:()[\]{}*_~`'"“”‘’]+/g, '');
     return /^ا?ل+ه$/u.test(clean) && clean.length >= 4;
   })) return true;
-
   return false;
 }
 
 function normalizeBlockedText(value) {
-  return normalizeArabic(value)
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}_]+/gu, ' ')
-    .trim();
+  return normalizeArabic(value).toLowerCase().replace(/[^\p{L}\p{N}_]+/gu, ' ').trim();
+}
+
+function isRepeatedBlockedWord(messageWord, blockedWord) {
+  if (!messageWord || !blockedWord || messageWord.length <= blockedWord.length) return false;
+  if (messageWord.length % blockedWord.length !== 0) return false;
+  const repetitions = messageWord.length / blockedWord.length;
+  return repetitions >= 2 && blockedWord.repeat(repetitions) === messageWord;
 }
 
 function matchesBlockedWord(text, blockedWord) {
@@ -58,8 +54,10 @@ function matchesBlockedWord(text, blockedWord) {
   const blockedWords = normalizeBlockedText(blockedWord).split(/\s+/).filter(Boolean);
   if (!messageWords.length || !blockedWords.length) return false;
 
-  // Match complete words (or complete multi-word phrases), never substrings.
-  if (blockedWords.length === 1) return messageWords.includes(blockedWords[0]);
+  if (blockedWords.length === 1) {
+    const blocked = blockedWords[0];
+    return messageWords.some(word => word === blocked || isRepeatedBlockedWord(word, blocked));
+  }
 
   for (let i = 0; i <= messageWords.length - blockedWords.length; i++) {
     if (blockedWords.every((word, offset) => messageWords[i + offset] === word)) return true;
@@ -110,26 +108,18 @@ function detect(message, config) {
 async function executeAction(message, action, duration, reason, strike) {
   const member = await message.guild.members.fetch(message.author.id).catch(() => null);
   const config = await getSecurityConfig(message.client, message.guild.id);
-
   if (!member || isWhitelisted(member, config)) return false;
-
   const deleted = await message.delete().then(() => true).catch(() => false);
-
   if (action === 'timeout' && member.moderatable) await member.timeout(Math.min(Math.max(duration || 60000, 1000), 2419200000), `AutoMod: ${reason}`).catch(() => {});
   else if (action === 'kick' && member.kickable) await member.kick(`AutoMod: ${reason}`).catch(() => {});
   else if (action === 'ban' && member.bannable) await member.ban({ reason: `AutoMod: ${reason}` }).catch(() => {});
-
-  await sendSecurityLog(message.client, message.guild, {
-    title: 'AutoMod Action',
-    description: `${message.author} triggered AutoMod.`,
-    fields: [
-      { name: 'Rule', value: reason.split(':')[0].slice(0, 100), inline: true },
-      { name: 'Reason', value: reason.slice(0, 900), inline: true },
-      { name: 'Strike', value: String(strike.count), inline: true },
-      { name: 'Action', value: action, inline: true },
-      { name: 'Message Deleted', value: deleted ? 'Yes' : 'No', inline: true },
-    ],
-  });
+  await sendSecurityLog(message.client, message.guild, { title: 'AutoMod Action', description: `${message.author} triggered AutoMod.`, fields: [
+    { name: 'Rule', value: reason.split(':')[0].slice(0, 100), inline: true },
+    { name: 'Reason', value: reason.slice(0, 900), inline: true },
+    { name: 'Strike', value: String(strike.count), inline: true },
+    { name: 'Action', value: action, inline: true },
+    { name: 'Message Deleted', value: deleted ? 'Yes' : 'No', inline: true },
+  ] });
   return true;
 }
 
@@ -137,17 +127,13 @@ export async function handleAutoMod(message) {
   if (!message.guild || message.author.bot) return false;
   const config = await getSecurityConfig(message.client, message.guild.id);
   if (!config.enabled || !config.autoMod.enabled || config.ignoredChannels?.includes(message.channel.id)) return false;
-
   const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
   if (!member || member.id === message.guild.ownerId || isWhitelisted(member, config)) return false;
-
   const violations = detect(message, config);
   if (!violations.length) return false;
-
   const latestConfig = await getSecurityConfig(message.client, message.guild.id);
   const latestMember = await message.guild.members.fetch(message.author.id).catch(() => member);
   if (!latestMember || latestMember.id === message.guild.ownerId || isWhitelisted(latestMember, latestConfig)) return false;
-
   const primary = violations[0];
   const reason = violations.map(v => `${v.type}: ${v.reason}`).join(', ');
   const strike = await addStrike(message.client, message.guild.id, message.author.id, reason);
@@ -156,7 +142,6 @@ export async function handleAutoMod(message) {
   const escalation = strike.count > 1 ? latestConfig.escalation?.find(item => item.strike === strike.count) : null;
   const action = escalation?.action || baseAction;
   const duration = escalation?.durationMs || rule.timeoutMs || 60000;
-
   await executeAction(message, action, duration, reason, strike);
   return true;
 }
