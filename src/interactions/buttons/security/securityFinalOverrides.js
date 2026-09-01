@@ -12,6 +12,7 @@ function embed(title, description, guild, color = 0xfee75c) {
 }
 
 async function renderStrikes(interaction, client) {
+  if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate().catch(() => null);
   const members = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
   const entries = [];
   for (const member of members.values()) {
@@ -23,15 +24,14 @@ async function renderStrikes(interaction, client) {
   entries.sort((a, b) => b.count - a.count);
   const text = entries.slice(0, 10).map((entry, index) => `${index + 1}. <@${entry.id}> — **${entry.count}** strikes`).join('\n') || 'No active strikes.';
   const components = [row(button(`security_back2:${interaction.user.id}`, '← Back'), button(`strikes_refresh2:${interaction.user.id}`, '🔄 Refresh', ButtonStyle.Success))];
-  for (let i = 0; i < Math.min(entries.length, 8); i += 4) {
-    components.push(row(...entries.slice(i, i + 4).map(entry => button(`strike_manage2:${entry.id}:${interaction.user.id}`, entry.name.slice(0, 80), ButtonStyle.Primary))));
-  }
-  return interaction.update({ embeds: [embed('🏆 Strikes', `**${interaction.guild.name}**\n\n${text}\n\nSelect a member to manage their strikes.`, interaction.guild)], components });
+  for (let i = 0; i < Math.min(entries.length, 8); i += 4) components.push(row(...entries.slice(i, i + 4).map(entry => button(`strike_manage2:${entry.id}:${interaction.user.id}`, entry.name.slice(0, 80), ButtonStyle.Primary))));
+  return interaction.editReply({ embeds: [embed('🏆 Strikes', `**${interaction.guild.name}**\n\n${text}\n\nSelect a member to manage their strikes.`, interaction.guild)], components });
 }
 
 async function manageStrike(interaction, client, userId) {
+  if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate().catch(() => null);
   const strike = await getStrikes(client, interaction.guildId, userId).catch(() => ({ count: 0, lastReason: '' }));
-  return interaction.update({ embeds: [embed('🏆 Strike Management', `<@${userId}>\n\n**Strikes:** ${Number(strike?.count || 0)}\n**Last Reason:** ${strike?.lastReason || '—'}`, interaction.guild)], components: [row(button(`strike_reset2:${userId}:${interaction.user.id}`, '🧹 Remove Strikes', ButtonStyle.Danger), button(`strikes_back2:${interaction.user.id}`, '← Back'))] });
+  return interaction.editReply({ embeds: [embed('🏆 Strike Management', `<@${userId}>\n\n**Strikes:** ${Number(strike?.count || 0)}\n**Last Reason:** ${strike?.lastReason || '—'}`, interaction.guild)], components: [row(button(`strike_reset2:${userId}:${interaction.user.id}`, '🧹 Remove Strikes', ButtonStyle.Danger), button(`strikes_back2:${interaction.user.id}`, '← Back'))] });
 }
 
 async function resetStrike(interaction, client, userId) {
@@ -74,9 +74,7 @@ async function autoModPunishment(interaction, client) {
 
 async function showLogChannelModal(interaction) {
   if (!ok(interaction)) return deny(interaction);
-  return interaction.showModal(new ModalBuilder().setCustomId(`logs_channel_modal2:${interaction.user.id}`).setTitle('Security Log Channel').addComponents(
-    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('value').setLabel('Channel ID').setPlaceholder('123456789012345678').setStyle(TextInputStyle.Short).setRequired(true))
-  ));
+  return interaction.showModal(new ModalBuilder().setCustomId(`logs_channel_modal2:${interaction.user.id}`).setTitle('Security Log Channel').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('value').setLabel('Channel ID').setPlaceholder('123456789012345678').setStyle(TextInputStyle.Short).setRequired(true))));
 }
 
 export default [
