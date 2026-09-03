@@ -32,7 +32,7 @@ export async function setupPartnerPanel(interaction, announcementChannel) {
   if (!requestChannel) requestChannel = await guild.channels.create({ name: 'partnership-requests', type: ChannelType.GuildText, reason: 'Partner system request channel', permissionOverwrites: [{ id: guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] });
 
   const embed = new EmbedBuilder().setColor(0x5865f2).setTitle('🤝 شراكات السيرفر')
-    .setDescription('حاب تسوي شراكة مع سيرفرنا؟ اضغط **تقديم طلب شراكة** وأرسل بيانات سيرفرك.\n\n__🤝・شروط الشراكة__\n• 100+ عضو\n• سيرفر نشط وتفاعل حقيقي\n• بدون مخالفات أو محتوى مخالف\n• إعلان متبادل بين السيرفرين\n• احترام الطرف الآخر\n• مخالفة الشروط = إنهاء الشراكة')
+    .setDescription('حاب تسوي شراكة مع سيرفرنا؟ اضغط **تقديم طلب شراكة** وأرسل بيانات سيرفرك.\n\n__شروط الشراكة__\n• 100+ عضو\n• سيرفر نشط وتفاعل حقيقي\n• بدون مخالفات أو محتوى مخالف\n• إعلان متبادل بين السيرفرين\n• احترام الطرف الآخر\n• مخالفة الشروط = إنهاء الشراكة')
     .setFooter({ text: `${guild.name} • نظام الشراكات` });
   const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('partner_apply').setLabel('تقديم طلب شراكة').setEmoji('🤝').setStyle(ButtonStyle.Primary));
   let panelMessage = data.panelMessageId ? await panelChannel.messages.fetch(data.panelMessageId).catch(() => null) : null;
