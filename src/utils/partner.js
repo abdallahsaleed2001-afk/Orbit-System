@@ -10,7 +10,6 @@ export async function getPartnerData(client, guildId) {
   data.applications = Array.isArray(data.applications) ? data.applications : [];
   data.partners = Array.isArray(data.partners) ? data.partners : [];
   const storedMin = Number(data.requirements?.minMembers);
-  // 500 was the old hard-coded default. Migrate legacy/invalid values to the new minimum of 100.
   const minMembers = !Number.isFinite(storedMin) || storedMin === 500 ? 100 : Math.max(100, storedMin);
   data.requirements = { minMembers, requireInvite: data.requirements?.requireInvite !== false, requireActive: data.requirements?.requireActive !== false };
   if (storedMin === 500 || !Number.isFinite(storedMin) || storedMin < 100) await save(client, guildId, data);
@@ -32,7 +31,7 @@ export async function setupPartnerPanel(interaction, announcementChannel) {
   if (!requestChannel) requestChannel = await guild.channels.create({ name: 'partnership-requests', type: ChannelType.GuildText, reason: 'Partner system request channel', permissionOverwrites: [{ id: guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] });
 
   const embed = new EmbedBuilder().setColor(0x5865f2).setTitle('🤝 شراكات السيرفر')
-    .setDescription('حاب تسوي شراكة مع سيرفرنا؟ اضغط **تقديم طلب شراكة** وأرسل بيانات سيرفرك.\n\n[🤝](https://discord.com/assets/5f20af75bca0b153.svg)・**__شروط الشراكة__**\n\n• 100+ عضو\n• سيرفر نشط وتفاعل حقيقي\n• بدون مخالفات أو محتوى مخالف\n• إعلان متبادل بين السيرفرين\n• احترام الطرف الآخر\n• مخالفة الشروط = إنهاء الشراكة')
+    .setDescription('حاب تسوي شراكة مع سيرفرنا؟ اضغط **تقديم طلب شراكة** وأرسل بيانات سيرفرك.\n\n**__شروط الشراكة__**\n\n• 100+ عضو\n• سيرفر نشط وتفاعل حقيقي\n• بدون مخالفات أو محتوى مخالف\n• إعلان متبادل بين السيرفرين\n• احترام الطرف الآخر\n• مخالفة الشروط = إنهاء الشراكة')
     .setFooter({ text: `${guild.name} • نظام الشراكات` });
   const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('partner_apply').setLabel('تقديم طلب شراكة').setEmoji('🤝').setStyle(ButtonStyle.Primary));
   let panelMessage = data.panelMessageId ? await panelChannel.messages.fetch(data.panelMessageId).catch(() => null) : null;
