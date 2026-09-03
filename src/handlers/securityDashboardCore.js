@@ -1,7 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { getSecurityConfig, updateSecurityConfig, getStrikes, clearStrikes } from '../services/security/securityService.js';
 import { emergencyLockdown, releaseEmergencyLockdown, isEmergencyLockdownActive } from '../services/security/emergencyLockdownService.js';
-import { buildSecurityDashboard as buildOriginalSecurityDashboard, buildSecurityControls } from '../commands/Security/security.js';
 import { runSnapshotCycle, generateSnapshotReport, isSnapshotTimerActive } from '../services/security/snapshotService.js';
 
 const NUKE_ACTIONS = ['strip', 'kick', 'ban'];
@@ -15,6 +14,7 @@ const cycle = (value, values) => values[(values.indexOf(value) + 1) % values.len
 function embed(title, description, guild, color = 0x5865f2) { return new EmbedBuilder().setAuthor({ name: 'Infinity Security Center', iconURL: guild.iconURL({ size: 128 }) || undefined }).setTitle(title).setDescription(description).setColor(color).setFooter({ text: 'Infinity System • Changes save automatically' }).setTimestamp(); }
 
 export async function buildSecurityDashboard(client, guild, userId) {
+  const { buildSecurityDashboard: buildOriginalSecurityDashboard, buildSecurityControls } = await import('../commands/Security/security.js');
   const config = await getSecurityConfig(client, guild.id);
   const controls = buildSecurityControls(userId);
   controls.push(row(button(`security_emergency_lockdown:${userId}`, isEmergencyLockdownActive(guild.id) ? '🔓 Release Emergency Lockdown' : '🚨 Emergency Lockdown', isEmergencyLockdownActive(guild.id) ? ButtonStyle.Success : ButtonStyle.Danger)));
