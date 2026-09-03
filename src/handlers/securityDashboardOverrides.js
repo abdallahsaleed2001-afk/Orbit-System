@@ -7,8 +7,9 @@ const deny = interaction => interaction.reply({ content: 'This security dashboar
 
 async function main(interaction, client) {
   if (!ok(interaction)) return deny(interaction);
+  if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate().catch(() => null);
   const config = await getSecurityConfig(client, interaction.guildId);
-  return interaction.update({
+  return interaction.editReply({
     embeds: [buildSecurityDashboard(config, interaction.guild)],
     components: buildSecurityControls(interaction.user.id),
   });
