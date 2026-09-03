@@ -30,6 +30,10 @@ const showSecurityLogChannelModal = async interaction => {
   );
 };
 
+const massRolePanelHandler = securityDashboardButtonHandlers.find(
+  handler => handler?.name === 'security_panel_massRole',
+);
+
 // Keep the Security handlers in one deterministic registration point.
 // The final override/compatibility handlers intentionally come last so legacy
 // dashboard buttons cannot replace the current handlers.
@@ -41,6 +45,9 @@ export default [
   ...securityDashboardFixes,
   // Direct fallback for the log-channel button.
   { name: 'logs_channel2', execute: showSecurityLogChannelModal },
+  // Explicit Mass Role registration so the dashboard button is always present
+  // even if another security handler export changes in the future.
+  massRolePanelHandler,
   ...securityFinalOverrides,
   ...securityStrikeCompatibility,
 ];
