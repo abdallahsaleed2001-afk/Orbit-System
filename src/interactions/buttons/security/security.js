@@ -34,6 +34,7 @@ const showSecurityLogChannelModal = async interaction => {
 // The final override/compatibility handlers intentionally come last so legacy
 // dashboard buttons cannot replace the current handlers.
 export default [
+  ...securityDashboardOverrides,
   ...securityDashboardButtonHandlers,
   ...securityDashboardRuleHandlers,
   ...securityAutoModDashboard,
@@ -42,5 +43,4 @@ export default [
   { name: 'logs_channel2', execute: showSecurityLogChannelModal },
   ...securityFinalOverrides,
   ...securityStrikeCompatibility,
-  ...securityDashboardOverrides,
 ];
