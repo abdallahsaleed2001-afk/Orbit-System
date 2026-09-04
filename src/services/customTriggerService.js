@@ -19,7 +19,8 @@ export const TRIGGER_ACTIONS = Object.freeze({
   ADD_ROLE: 'add_role', REMOVE_ROLE: 'remove_role', DYNAMIC_ROLE: 'dynamic_role',
   REMOVE_DYNAMIC_ROLE: 'remove_dynamic_role', ADD_MEMBER: 'add_member', CLEAR_MESSAGES: 'clear_messages',
   BAN: 'ban', KICK: 'kick', WARN: 'warn', MUTE: 'mute', UNMUTE: 'unmute',
-  TIMEOUT: 'timeout', UNTIMEOUT: 'untimeout', JAIL: 'jail', UNJAIL: 'unjail'
+  TIMEOUT: 'timeout', UNTIMEOUT: 'untimeout', JAIL: 'jail', UNJAIL: 'unjail',
+  CHANGE_NICKNAME: 'change_nickname', CHANGE_CHANNEL_NAME: 'change_channel_name'
 });
 
 export async function getCustomTriggers(client, guildId) {
@@ -78,7 +79,7 @@ export async function handleCustomTrigger(message, client) {
     TRIGGER_ACTIONS.ADD_MEMBER, TRIGGER_ACTIONS.CLEAR_MESSAGES, TRIGGER_ACTIONS.BAN, TRIGGER_ACTIONS.KICK,
     TRIGGER_ACTIONS.WARN, TRIGGER_ACTIONS.MUTE, TRIGGER_ACTIONS.UNMUTE, TRIGGER_ACTIONS.TIMEOUT,
     TRIGGER_ACTIONS.UNTIMEOUT, TRIGGER_ACTIONS.JAIL, TRIGGER_ACTIONS.UNJAIL, TRIGGER_ACTIONS.DYNAMIC_ROLE,
-    TRIGGER_ACTIONS.REMOVE_DYNAMIC_ROLE
+    TRIGGER_ACTIONS.REMOVE_DYNAMIC_ROLE, TRIGGER_ACTIONS.CHANGE_NICKNAME, TRIGGER_ACTIONS.CHANGE_CHANNEL_NAME
   ];
   const trigger = triggers.find(item => prefixActions.includes(item.action)
     ? (content === normalizeTrigger(item.trigger) || content.startsWith(`${normalizeTrigger(item.trigger)} `))
@@ -92,6 +93,8 @@ export async function handleCustomTrigger(message, client) {
   try {
     const channelActions = [TRIGGER_ACTIONS.LOCK, TRIGGER_ACTIONS.UNLOCK, TRIGGER_ACTIONS.HIDE, TRIGGER_ACTIONS.UNHIDE];
     if (channelActions.includes(trigger.action) && !message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return false;
+    if (trigger.action === TRIGGER_ACTIONS.CHANGE_CHANNEL_NAME && !message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return false;
+    if (trigger.action === TRIGGER_ACTIONS.CHANGE_NICKNAME && !message.member.permissions.has(PermissionFlagsBits.ManageNicknames)) return false;
     if (trigger.action === TRIGGER_ACTIONS.CLEAR_MESSAGES && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return false;
     if ([TRIGGER_ACTIONS.ADD_ROLE, TRIGGER_ACTIONS.REMOVE_ROLE, TRIGGER_ACTIONS.DYNAMIC_ROLE, TRIGGER_ACTIONS.REMOVE_DYNAMIC_ROLE].includes(trigger.action) && !message.member.roles.cache.has(STAFF_ROLE_ID)) return false;
     if ([TRIGGER_ACTIONS.WARN, TRIGGER_ACTIONS.MUTE, TRIGGER_ACTIONS.UNMUTE, TRIGGER_ACTIONS.TIMEOUT, TRIGGER_ACTIONS.UNTIMEOUT, TRIGGER_ACTIONS.JAIL, TRIGGER_ACTIONS.UNJAIL].includes(trigger.action)) {
@@ -103,6 +106,10 @@ export async function handleCustomTrigger(message, client) {
       if (!await addMemberToCurrentChannel(message, trigger)) return false;
     } else if (trigger.action === TRIGGER_ACTIONS.CLEAR_MESSAGES) {
       if (!await clearMessages(message, trigger)) return false;
+    } else if (trigger.action === TRIGGER_ACTIONS.CHANGE_NICKNAME) {
+      if (!await changeNickname(message, trigger)) return false;
+    } else if (trigger.action === TRIGGER_ACTIONS.CHANGE_CHANNEL_NAME) {
+      if (!await changeChannelName(message, trigger)) return false;
     } else if (channelActions.includes(trigger.action)) {
       const targetRole = message.guild.roles.cache.get(TARGET_ROLE_ID) || await message.guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
       if (!targetRole) return false;
@@ -130,6 +137,34 @@ export async function handleCustomTrigger(message, client) {
     });
     return false;
   }
+}
+
+async function changeNickname(message, trigger) {
+  const targetMember = await resolveTargetMember(message);
+  const rawContent = String(message.content).trim();
+  const triggerText = normalizeTrigger(trigger.trigger);
+  const remainder = rawContent.slice(triggerText.length).trim();
+  const targetMatch = remainder.match(/^<@!?(\d{17,20})>|^(\d{17,20})/);
+  const nickname = remainder.replace(/^<@!?\d{17,20}>\s*/, '').replace(/^\d{17,20}\s*/, '').trim();
+  if (!targetMember || !nickname || nickname.length > 32) return false;
+  const botMember = message.guild.members.me;
+  if (!botMember || targetMember.id === message.guild.ownerId || targetMember.id === botMember.id || targetMember.roles.highest.position >= botMember.roles.highest.position || !targetMember.manageable) return false;
+  if (!targetMatch && !message.mentions.users.first()) return false;
+  await targetMember.setNickname(nickname, `Custom trigger "${trigger.trigger}" used by ${message.author.tag}`);
+  return true;
+}
+
+async function changeChannelName(message, trigger) {
+  const rawContent = String(message.content).trim();
+  const triggerText = normalizeTrigger(trigger.trigger);
+  const remainder = rawContent.slice(triggerText.length).trim();
+  const channelMention = remainder.match(/^<#(\d{17,20})>/);
+  const channelId = channelMention?.[1] || remainder.match(/^(\d{17,20})/)?.[1];
+  const name = remainder.replace(/^<#\d{17,20}>\s*/, '').replace(/^\d{17,20}\s*/, '').trim();
+  const channel = channelId ? message.guild.channels.cache.get(channelId) || await message.guild.channels.fetch(channelId).catch(() => null) : message.channel;
+  if (!channel || !name || name.length > 100 || !channel.manageable) return false;
+  await channel.setName(name, `Custom trigger "${trigger.trigger}" used by ${message.author.tag}`);
+  return true;
 }
 
 async function clearMessages(message, trigger) {
@@ -229,12 +264,12 @@ async function executeModerationTrigger(message, action, trigger) {
     if (action === TRIGGER_ACTIONS.JAIL) {
       if (member.roles.cache.has(jailRole.id)) return false;
       await member.roles.add(jailRole, reason);
-      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Jailed', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: jailRole.id } } });
+      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Jailed', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: jailRole.id } });
       await sendPunishmentDM({ user: member.user, guild: message.guild, type: 'jail', reason, caseId });
     } else {
       if (!member.roles.cache.has(jailRole.id)) return false;
       await member.roles.remove(jailRole, reason);
-      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Unjailed', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: jailRole.id } } });
+      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Unjailed', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: jailRole.id } });
     }
     return true;
   }
@@ -242,20 +277,20 @@ async function executeModerationTrigger(message, action, trigger) {
   if (action === TRIGGER_ACTIONS.BAN) {
     if (!message.member.permissions.has(PermissionFlagsBits.BanMembers) || !member.bannable) return false;
     await member.ban({ reason });
-    await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Banned', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } } });
+    await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Banned', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } });
     return true;
   }
 
   if (action === TRIGGER_ACTIONS.KICK) {
     if (!message.member.permissions.has(PermissionFlagsBits.KickMembers) || !member.kickable) return false;
     await member.kick(reason);
-    await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Kicked', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } } });
+    await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Kicked', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } });
     return true;
   }
 
   if (action === TRIGGER_ACTIONS.WARN) {
     const { id, totalCount } = await WarningService.addWarning({ guildId: message.guild.id, userId: member.id, moderatorId: message.author.id, reason, timestamp: Date.now() });
-    const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'User Warned', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, totalWarns: totalCount, warningNumber: totalCount, warningId: id } } });
+    const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'User Warned', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, totalWarns: totalCount, warningNumber: totalCount, warningId: id } });
     await WarningService.attachCaseId(message.guild.id, member.id, id, caseId);
     await sendPunishmentDM({ user: member.user, guild: message.guild, type: 'warn', reason, caseId });
     const escalation = await applyWarningEscalation({ guild: message.guild, member, moderator: message.member, warningCount: totalCount, reason, client });
@@ -268,11 +303,11 @@ async function executeModerationTrigger(message, action, trigger) {
     if (action === TRIGGER_ACTIONS.TIMEOUT) {
       const durationMs = 10 * 60 * 1000;
       await member.timeout(durationMs, reason);
-      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Timed Out', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, durationMs } } });
+      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Timed Out', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, durationMs } });
       await sendPunishmentDM({ user: member.user, guild: message.guild, type: 'timeout', duration: '10 minutes', reason, caseId });
     } else {
       await member.timeout(null, reason);
-      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Untimed Out', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } } });
+      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Untimed Out', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } });
     }
     return true;
   }
@@ -283,12 +318,12 @@ async function executeModerationTrigger(message, action, trigger) {
     if (action === TRIGGER_ACTIONS.MUTE) {
       if (member.roles.cache.has(muteRole.id)) return false;
       await member.roles.add(muteRole, reason);
-      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Muted', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: muteRole.id } } });
+      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Muted', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: muteRole.id } });
       await sendPunishmentDM({ user: member.user, guild: message.guild, type: 'mute', reason, duration: 'Permanent', caseId });
     } else {
       if (!member.roles.cache.has(muteRole.id)) return false;
       await member.roles.remove(muteRole, reason);
-      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Unmuted', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: muteRole.id } } });
+      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Unmuted', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: muteRole.id } });
     }
     return true;
   }
