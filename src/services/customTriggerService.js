@@ -264,12 +264,12 @@ async function executeModerationTrigger(message, action, trigger) {
     if (action === TRIGGER_ACTIONS.JAIL) {
       if (member.roles.cache.has(jailRole.id)) return false;
       await member.roles.add(jailRole, reason);
-      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Jailed', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: jailRole.id } });
+      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Jailed', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: jailRole.id } } });
       await sendPunishmentDM({ user: member.user, guild: message.guild, type: 'jail', reason, caseId });
     } else {
       if (!member.roles.cache.has(jailRole.id)) return false;
       await member.roles.remove(jailRole, reason);
-      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Unjailed', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: jailRole.id } });
+      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Unjailed', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: jailRole.id } } });
     }
     return true;
   }
@@ -277,20 +277,20 @@ async function executeModerationTrigger(message, action, trigger) {
   if (action === TRIGGER_ACTIONS.BAN) {
     if (!message.member.permissions.has(PermissionFlagsBits.BanMembers) || !member.bannable) return false;
     await member.ban({ reason });
-    await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Banned', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } });
+    await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Banned', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } } });
     return true;
   }
 
   if (action === TRIGGER_ACTIONS.KICK) {
     if (!message.member.permissions.has(PermissionFlagsBits.KickMembers) || !member.kickable) return false;
     await member.kick(reason);
-    await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Kicked', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } });
+    await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Kicked', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } } });
     return true;
   }
 
   if (action === TRIGGER_ACTIONS.WARN) {
     const { id, totalCount } = await WarningService.addWarning({ guildId: message.guild.id, userId: member.id, moderatorId: message.author.id, reason, timestamp: Date.now() });
-    const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'User Warned', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, totalWarns: totalCount, warningNumber: totalCount, warningId: id } });
+    const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'User Warned', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, totalWarns: totalCount, warningNumber: totalCount, warningId: id } } });
     await WarningService.attachCaseId(message.guild.id, member.id, id, caseId);
     await sendPunishmentDM({ user: member.user, guild: message.guild, type: 'warn', reason, caseId });
     const escalation = await applyWarningEscalation({ guild: message.guild, member, moderator: message.member, warningCount: totalCount, reason, client });
@@ -303,11 +303,11 @@ async function executeModerationTrigger(message, action, trigger) {
     if (action === TRIGGER_ACTIONS.TIMEOUT) {
       const durationMs = 10 * 60 * 1000;
       await member.timeout(durationMs, reason);
-      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Timed Out', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, durationMs } });
+      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Timed Out', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, durationMs } } });
       await sendPunishmentDM({ user: member.user, guild: message.guild, type: 'timeout', duration: '10 minutes', reason, caseId });
     } else {
       await member.timeout(null, reason);
-      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Untimed Out', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } });
+      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Untimed Out', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id } } });
     }
     return true;
   }
@@ -318,12 +318,12 @@ async function executeModerationTrigger(message, action, trigger) {
     if (action === TRIGGER_ACTIONS.MUTE) {
       if (member.roles.cache.has(muteRole.id)) return false;
       await member.roles.add(muteRole, reason);
-      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Muted', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: muteRole.id } });
+      const caseId = await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Muted', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: muteRole.id } } });
       await sendPunishmentDM({ user: member.user, guild: message.guild, type: 'mute', reason, duration: 'Permanent', caseId });
     } else {
       if (!member.roles.cache.has(muteRole.id)) return false;
       await member.roles.remove(muteRole, reason);
-      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Unmuted', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: muteRole.id } });
+      await logModerationAction({ client: message.client, guild: message.guild, event: { action: 'Member Unmuted', target, executor, reason, metadata: { userId: member.id, moderatorId: message.author.id, roleId: muteRole.id } } });
     }
     return true;
   }
